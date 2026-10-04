@@ -491,7 +491,7 @@ const te = { a: null, b: null, step: 0 };
 function teRoute() { return routeById($('#te-route').value); }
 function drawSelection() {
   layers.sel.clearLayers();
-  const r = teRoute(); if (!r || te.a == null || te.b == null || $('#tab-terrain').hidden) return;
+  const r = teRoute(); if (!r || !isFinite(te.a) || !isFinite(te.b) || te.a == null || te.b == null || $('#tab-terrain').hidden) return;
   const g = S.getGeom(r), a = Math.max(0, Math.floor(Math.min(te.a, te.b) * MI / g.ds)), b = Math.min(g.n, Math.ceil(Math.max(te.a, te.b) * MI / g.ds));
   const pts = []; for (let i = a; i <= b; i += 2) pts.push([g.lat[i], g.lon[i]]); pts.push([g.lat[b], g.lon[b]]);
   L_.polyline(pts, { color: '#00e5ff', weight: 12, opacity: 0.55, lineCap: 'butt', interactive: false }).addTo(layers.sel);
