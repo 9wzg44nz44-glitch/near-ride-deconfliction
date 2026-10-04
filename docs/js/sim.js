@@ -397,6 +397,7 @@ function summarizeEvent(A, B, S, P, adj) {
     tStart: first.t, tEnd: last.t, tMid: mid.t, duration, rel, relRaw: relK, terrain: cls, terrainShare: clsCount.map((c) => c / S.length),
     overtaker: overtaker === 'A' ? A.grp.id : overtaker === 'B' ? B.grp.id : null,
     behind: behind === 'A' ? A.grp.id : behind === 'B' ? B.grp.id : null,
+    atStop: pa.wpts.some((w) => Math.abs(w.e - mid.fi) <= 40) || pb.wpts.some((w) => Math.abs(w.e - mid.fj) <= 40),
     ridersA: inA, ridersB: inB, nA: A.N, nB: B.N, score: base, level, lat, lon,
     cellA: mid.fi, cellB: mid.fj, distA: mid.fi * pa.ds, distB: mid.fj * pb.ds,
     distAFwd: pa.reverse ? pa.L - mid.fi * pa.ds : mid.fi * pa.ds, distBFwd: pb.reverse ? pb.L - mid.fj * pb.ds : mid.fj * pb.ds,
@@ -411,7 +412,7 @@ export function describeEvent(ev) {
   else if (ev.rel === 'follow') { const f = ev.behind === ev.a ? ev.aName : ev.bName, l = ev.behind === ev.a ? ev.bName : ev.aName; what = `${f} catching up to / following ${l}, same direction`; }
   else if (ev.rel === 'opposite') what = `${ev.aName} and ${ev.bName} meeting head-on, opposite directions`;
   else what = `${ev.aName} and ${ev.bName} crossing / merging`;
-  return `${what}, ${T}, ${fmtClock(ev.tStart)}`;
+  return `${what}${ev.atStop ? ' (at a gas/food regroup stop)' : ''}, ${T}, ${fmtClock(ev.tStart)}`;
 }
 
 // ------------------------------------------------------------------ scenario runner

@@ -246,7 +246,8 @@ function whereText(ev) {
   const road = roadAt(r, ev.distAFwd), w = nearWpt(r, ev.distAFwd);
   return `mile ${(ev.distAFwd / MI).toFixed(1)} of ${r.name}${road ? ', ' + road : ''}${w ? ` (near "${w.name}")` : ''}`;
 }
-function relText(ev) {
+function relText(ev) { return relText0(ev) + (ev.atStop ? ' [at a gas/food stop]' : ''); }
+function relText0(ev) {
   if (ev.rel === 'overtake') { const o = ev.overtaker === ev.a ? ev.aName : ev.bName, v = ev.overtaker === ev.a ? ev.bName : ev.aName; return `${o} overtaking ${v} (same direction)`; }
   if (ev.rel === 'follow') { const f = ev.behind === ev.a ? ev.aName : ev.bName, l = ev.behind === ev.a ? ev.bName : ev.aName; return `${f} catching up to ${l} (same direction)`; }
   if (ev.rel === 'opposite') return 'Meeting head-on (opposite directions)';

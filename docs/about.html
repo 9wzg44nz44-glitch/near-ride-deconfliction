@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Method and about | NEAR Route &amp; Start Time Deconfliction Estimator</title>
+<meta name="description" content="How the NEAR deconfliction estimator models ride groups, terrain, stops and encounters, what data it uses, and what its limits are.">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/style.css">
+<script>try{var t=localStorage.getItem('near.theme');if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t}catch(e){}</script>
+</head>
+<body>
+<header class="site-header"><div class="header-inner">
+  <a class="brand" href="index.html">NEAR Deconfliction Estimator<small>Northeast Adventure Riders: route &amp; start time</small></a>
+  <nav aria-label="Main"><a href="index.html">Simulator</a><a href="about.html" aria-current="page">Method &amp; about</a></nav>
+  <button type="button" class="icon-btn" id="theme-btn" aria-label="Toggle dark or light theme">Theme</button>
+</div></header>
+<main class="prose">
+<h1>Method, data and limits</h1>
+<p class="disclaimer" id="limits"><strong>Estimates only.</strong> This tool is a planning aid, not a safety system. It cannot know about weather, mud, washouts, traffic, mechanical trouble, wrong turns, rider choices or road closures. Obey posted speed limits and stop signs on public roads. Class VI roads in New Hampshire are unmaintained by the town; they are used at your own risk, may be closed seasonally or by the town, and their legal status and condition must be verified before riding. Nothing here replaces the judgment of the ride leader and each rider.</p>
+
+<h2>What it does</h2>
+<p>You choose how many riders are on each route and when each group leaves the start. The simulator moves every group along its route second by second, finds the times and places where groups come within a set distance of each other, and labels each encounter by direction (same direction, opposite direction, or crossing), by who is overtaking, and by terrain (paved, maintained dirt, or Class VI). It can then search for start times that avoid or reduce encounters and can run many randomized rides to tell a leader how likely each encounter is.</p>
+<p>The routes in this version are <strong>SBH Monadnock</strong> and <strong>MBH Monadnock</strong>, two New Hampshire dual-sport routes that share a start and many roads. You can add more routes from a GPX file in the browser (see below).</p>
+
+<h2>Data sources</h2>
+<ul>
+<li><strong>Route tracks and waypoints:</strong> GPX files from the riders (exported from MapOut). Tracks are simplified to a 2.5 m tolerance for the web page. The waypoints (gas, food, hazards, gates and notes) are parsed and shown on the map and in the Stops tab.</li>
+<li><strong>Terrain, speed limits and stop signs:</strong> OpenStreetMap data downloaded through the Overpass API by the build scripts and stored in the repository. See the attribution below.</li>
+<li><strong>Map tiles:</strong> OpenStreetMap standard tiles, loaded by your browser while you use the page.</li>
+</ul>
+<p>Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>, available under the <a href="https://opendatacommons.org/licenses/odbl/1-0/">Open Database License (ODbL) 1.0</a>. The derived terrain classification in <code>docs/data/routes.json</code> is a database derived from OpenStreetMap and is shared under the same license. The code is MIT licensed.</p>
+
+<h2>How terrain is classified</h2>
+<p>Each route is sampled every 10 m and each sample is matched to the nearest OpenStreetMap way within 30 m, preferring ways that run in the same direction as the track. Each way gets a class from its tags:</p>
+<table>
+<thead><tr><th>Class</th><th>Rules used (first match wins)</th></tr></thead>
+<tbody>
+<tr><td>Class VI</td><td>Name, designation or description mentions Class VI, unmaintained, jeep trail, legal trail, cart path or woods road; or <code>maintenance=no</code>; or <code>highway=path</code>, <code>bridleway</code> or <code>track</code> (unless tagged paved or <code>tracktype</code> grade 1 or 2); or an unpaved road with rough tags (<code>tracktype</code> grade 3 to 5, bad smoothness, ground or mud surface); or an unnamed unpaved road with no speed limit.</td></tr>
+<tr><td>Maintained dirt</td><td>Unpaved surface on a residential, unclassified, service or tertiary road that has a <code>maxspeed</code> tag or <code>tracktype</code> grade 1 or 2, or is a named road; or a track with grade 1 or 2.</td></tr>
+<tr><td>Paved</td><td>Paved surface tags, or a primary, secondary, tertiary or residential road with no surface tag. Unclassified and service roads with no surface tag are assumed paved at low confidence.</td></tr>
+</tbody></table>
+<p>Waypoints named like "Jeep Trail", "Class VI", "Cellar hole" or "gate" push nearby unpaved maintained dirt toward Class VI. Gaps with no matching way inherit the neighbor's class. Stretches shorter than 80 m are merged into their neighbors. Every stretch carries a <strong>confidence</strong>: high (explicit tags), medium (inferred from the road type) or low (weak evidence or gap filling). Posted speed limits come from <code>maxspeed</code> where it exists; otherwise the defaults are 35 mph paved and 25 mph maintained dirt. Class VI has no posted limit.</p>
+<p><strong>OpenStreetMap is not perfect.</strong> Class VI status is a legal designation that is often missing from OSM, and a road tagged <code>track</code> may be well maintained. Use the Terrain editor on the main page to correct any stretch; edits are saved in your browser and can be exported and imported as JSON.</p>
+<h3>Terrain breakdown of the bundled routes</h3>
+<div class="tablewrap"><table id="terr"><thead><tr><th>Route</th><th>Length</th><th>Paved</th><th>Maint. dirt</th><th>Class VI</th><th>Confidence high / medium / low</th><th>Mapped stop signs / inferred / signals</th></tr></thead><tbody><tr><td colspan="7">Loading...</td></tr></tbody></table></div>
+
+<h2>Speed model</h2>
+<table>
+<thead><tr><th>Terrain</th><th>Target speed</th></tr></thead>
+<tbody>
+<tr><td>Class VI</td><td>Intermediate riders 16 mph average, fast riders 23.5 mph average (22 to 25 mph). The averages already include rough, rocky, hilly and muddy sections, so no extra slowdown is applied on top.</td></tr>
+<tr><td>Paved and maintained dirt</td><td>Posted limit plus 7.5 mph (adjustable 5 to 10; fast riders add 2.5 mph more). Speed is also capped in corners by a lateral acceleration limit (3.0 m/s&sup2; intermediate, 3.6 m/s&sup2; fast, never below 10 mph), using the curvature of the track.</td></tr>
+<tr><td>Acceleration and braking</td><td>3.0 m/s&sup2; accelerating on roads, 2.0 on Class VI, 3.5 braking. Speed ramps are computed forward and backward along the route so riders slow before a stop or a slower stretch.</td></tr>
+<tr><td>Stop signs and signals</td><td>Groups stop at mapped stop signs (and at inferred junctions where a minor road meets a bigger road, which can be switched off), pause about 2 seconds, and accelerate away. Signals add an expected 20 seconds. Only the direction of travel facing the sign stops.</td></tr>
+<tr><td>Regroup stops</td><td>Gas and food waypoints that lie within 300 m of the track become stops. By default the first stop with food is lunch (45 minutes) and every other gas or food stop is 15 minutes. The whole group waits for the sweep rider, then leaves together. Edit or skip any stop in the Stops tab. Waypoints near the start and end are ignored.</td></tr>
+</tbody></table>
+
+<h2>Group dynamics</h2>
+<p>Each group is a staggered column. The leader is integrated along the route in 10 m cells using the speed profile above. Followers keep a <em>time gap</em> behind the rider ahead: 2 seconds on paved and maintained dirt, 4.5 seconds on Class VI. The gap widens quickly (over about 150 m) on rough ground, closes up more slowly (about 600 m), and grows a little at every stop sign because each rider stops and restarts in turn. A column of 18 riders is therefore several hundred metres long on pavement and longer on Class VI. At a regroup stop the leader waits for the sweep, and the column leaves again with 2 second gaps. Rider positions are then sampled every second for animation and encounter detection. Groups are modeled as a single column; splits into sub-groups are not.</p>
+
+<h2>Encounter detection</h2>
+<p>Every second the simulator knows where the head and the tail of each group are. Two groups are in an <em>encounter</em> when any stretch occupied by one group is within the threshold distance (default 30 m, adjustable 15 to 100 m) of any stretch occupied by the other, measured on the map between route points. This catches shared roads, crossings and merges even where the two routes have different mile counts. Consecutive detections less than 90 seconds apart are merged into one event.</p>
+<ul>
+<li><strong>Direction:</strong> compared by the heading of each route at the contact point: within 60 degrees is same direction, more than 120 degrees is opposite, otherwise crossing or merging.</li>
+<li><strong>Overtaking:</strong> for same-direction events, the order in which the two heads pass the contact point is compared at the start and end of the event. If the order flips, the group that ends up ahead overtook. If not, one group is catching up to or following the other.</li>
+<li><strong>Terrain:</strong> the most common terrain class among the contact points.</li>
+<li><strong>Riders involved:</strong> riders of each group inside the contact zone at the middle of the event.</li>
+<li><strong>Severity:</strong> terrain weight (paved 1, maintained dirt 2, Class VI 4) times relation weight (overtake 2, head-on 2, crossing 1, following 1) times (1 + 0.1 times the riders in both groups). Under 6 is low, 6 to 14 medium, above 14 high. These weights are judgment calls, not measured risk.</li>
+<li>A group sitting at a gas or food stop counts as being there, so a later group arriving at the same stop shows up as an encounter marked "at a gas/food stop".</li>
+</ul>
+
+<h2>Optimizer and leader forecast</h2>
+<p><strong>Optimizer.</strong> Because each group's ride does not depend on when the other group leaves, the simulator rides each group once and then slides it in time. For every pair it scores the weighted severity at every start-time difference in 5 minute steps, then searches all combinations of free groups from 7:00 AM to 3:00 PM (exhaustive for up to three free groups, hill climbing with restarts beyond that). A start-time difference only counts as clear if every difference within 15 minutes either side is also clear. The top options are the most compact schedule, the best schedule with the other departure order, and a further distinct schedule at least 30 minutes away.</p>
+<p><strong>Leader forecast.</strong> The scenario is simulated many times (30 to 100). Each run multiplies each group's speed by a random factor (about 6 percent) plus a slowly varying local factor (about 7 percent), varies stop and regroup lengths (about 25 percent) and jitters departures by about 2 minutes. Encounters from all runs are grouped by pair and place; the chance is the share of runs containing that encounter, and the time window is the 10th to 90th percentile of its start time. These ranges describe the assumed variability, not a measured one.</p>
+
+<h2 id="gpx">Adding your own routes</h2>
+<p><strong>In the browser:</strong> open "Add GPX" on the main page, choose a file, pick a default terrain and add it. The file is parsed locally and never uploaded. Without OpenStreetMap data the whole route gets one terrain and no stop signs, so use the Terrain editor to mark the Class VI and paved stretches. Imported routes are kept in your browser (when small enough).</p>
+<p><strong>In the repository:</strong> put GPX files in <code>raw/</code>, list them in <code>scripts/build-routes.mjs</code>, then run <code>npm run build:routes</code>, <code>npm run fetch:osm</code> and <code>npm run build:terrain</code>. This downloads OSM data around the new routes and classifies them automatically. See the README.</p>
+
+<h2>Known limitations</h2>
+<ul>
+<li>Speeds are the riders' own typical figures turned into a simple model. Real groups stop for photos, wrong turns, mud, breakdowns and weather, and ride different parts of Class VI at very different speeds.</li>
+<li>Only about half of the route length has explicit surface or maxspeed tags in OSM; the rest is inferred. Class VI sections tagged only as <code>track</code> are assumed Class VI at medium confidence.</li>
+<li>Many rural stop signs are missing from OSM. The inferred junction stops fill part of that gap and are a guess.</li>
+<li>Time steps are one second. A very fast head-on pass with a threshold under about 20 m between two solo riders could in principle fall between samples.</li>
+<li>The GPX timestamps are from earlier rides and are not used. Roads change; check closures and seasonal rules.</li>
+<li>The model has not been calibrated against recorded ride data. Treat the answers as a way to compare options, not as predictions.</li>
+</ul>
+
+<h2>Credits and contact</h2>
+<p>Created by <strong>Dan Britton with Grok Bot (AI assistant)</strong>. Questions or corrections: <a href="mailto:BrittonSolutions@icloud.com">BrittonSolutions@icloud.com</a>. Source code and data build scripts: <a href="https://github.com/9wzg44nz44-glitch/near-ride-deconfliction">github.com/9wzg44nz44-glitch/near-ride-deconfliction</a>.</p>
+<p>This project is separate from, and unrelated to, Dan's physics experiments.</p>
+</main>
+<footer>
+  <p>Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> (ODbL). Estimates only; not a safety system.</p>
+</footer>
+<script>
+document.getElementById('theme-btn').addEventListener('click',function(){var t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;try{localStorage.setItem('near.theme',t)}catch(e){}});
+fetch('data/routes.json').then(function(r){return r.json()}).then(function(d){
+  var tb=document.querySelector('#terr tbody');tb.innerHTML='';
+  d.routes.forEach(function(r){var s=r.stats,c=s.confPct,st=s.stops||{};
+    var tr=document.createElement('tr');
+    tr.innerHTML='<th scope="row" style="text-transform:none;font-size:.95rem;color:inherit">'+r.name+'</th><td>'+s.lengthMi+' mi</td>'+s.miles.map(function(m,i){return '<td>'+m+' mi ('+s.pct[i]+'%)</td>'}).join('')+'<td>'+c.high+'% / '+c.medium+'% / '+c.low+'%</td><td>'+(st.stop||0)+' / '+(st.inferredStop||0)+' / '+(st.signal||0)+'</td>';
+    tb.appendChild(tr);});
+  var m=document.createElement('p');m.className='small muted';m.textContent='OSM snapshot '+(d.meta.osmSnapshot||'').slice(0,10)+'.';tb.closest('.tablewrap').appendChild(m);
+});
+</script>
+<script src="assets/share-button.js" defer></script>
+</body>
+</html>
