@@ -1,0 +1,14 @@
+{
+  "name": "near-ride-deconfliction",
+  "version": "1.0.0",
+  "description": "Northeast Adventure Riders (NEAR) Route & Start Time Deconfliction Estimator",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "build:routes": "node scripts/build-routes.mjs",
+    "fetch:osm": "node scripts/fetch-osm.mjs",
+    "build:terrain": "node scripts/classify.mjs",
+    "test": "node --test tests/",
+    "serve": "node scripts/serve.mjs"
+  }
+}
