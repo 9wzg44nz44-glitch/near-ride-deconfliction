@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NEAR Route &amp; Start Time Deconfliction Estimator</title>
+<meta name="description" content="Estimate when dual-sport ride groups on the SBH and MBH Monadnock routes will meet, overtake or cross, and find start times that avoid it.">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="css/style.css">
+<script>try{var t=localStorage.getItem('near.theme');if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t}catch(e){}</script>
+</head>
+<body>
+<header class="site-header"><div class="header-inner">
+  <a class="brand" href="index.html">NEAR Deconfliction Estimator<small>Northeast Adventure Riders: route &amp; start time</small></a>
+  <nav aria-label="Main"><a href="index.html" aria-current="page">Simulator</a><a href="about.html">Method &amp; about</a></nav>
+  <button type="button" class="icon-btn" id="theme-btn" aria-label="Toggle dark or light theme" title="Toggle theme">Theme</button>
+</div></header>
+<main id="main">
+  <p class="disclaimer"><strong>Estimates only.</strong> This is a planning aid built on a simplified model and volunteer map data. It is not a safety system. Obey posted limits and stop signs, ride for the conditions, and verify the legal status and seasonal closures of Class VI roads. <a href="about.html#limits">Limits and assumptions</a>.</p>
+
+  <section class="panel" id="scenario" aria-labelledby="sc-h">
+    <h2 id="sc-h">1. Scenario</h2>
+    <p class="small muted">Set riders per route (0 = not riding) and departure times in local Eastern clock time, 7:00 AM to 3:00 PM. Defaults: SBH Monadnock 18 riders at 9:00 AM, MBH Monadnock 7 riders at 9:30 AM.</p>
+    <div class="tablewrap"><table id="rows"><caption class="small muted" style="text-align:left">Ride groups</caption>
+      <thead><tr><th scope="col">Route</th><th scope="col">Riders</th><th scope="col">Departs (ET)</th><th scope="col">Skill</th><th scope="col">Direction</th></tr></thead>
+      <tbody></tbody></table></div>
+    <div class="q-ctl">
+      <label>Time resolution <select id="res"><option value="60">1 minute</option><option value="15">15 seconds</option></select></label>
+      <button class="btn" type="button" id="reset-btn">Reset to default scenario</button>
+      <span class="small muted" id="status" role="status"></span>
+    </div>
+  </section>
+
+  <section class="q-card" id="qcard" aria-labelledby="q-h">
+    <h2 id="q-h">Question: is one group overtaking another on a given terrain?</h2>
+    <div class="q-ctl">
+      <label>Is <select id="q-x"></select></label>
+      <label>overtaking <select id="q-y"></select></label>
+      <label>on <select id="q-t"><option value="2" selected>Class VI</option><option value="1">maintained dirt</option><option value="0">paved</option></select></label>
+      <label>between <input type="time" id="q-from" value="10:00" step="60"></label>
+      <label>and <input type="time" id="q-to" value="11:00" step="60"></label>
+    </div>
+    <div class="answer" id="q-answer" aria-live="polite">Running the model...</div>
+    <div class="small muted" id="q-detail"></div>
+  </section>
+
+  <section class="mapwrap" aria-label="Animated map">
+    <div id="map" role="application" aria-label="Map of ride groups"></div>
+    <div class="banner" id="banner" role="alert" aria-live="assertive"></div>
+    <div class="legend" id="legend"></div>
+    <div class="player">
+      <div class="line">
+        <button class="btn primary" type="button" id="play-btn" aria-label="Play or pause">Play</button>
+        <button class="btn" type="button" id="back-btn" aria-label="Back 5 minutes">-5 min</button>
+        <button class="btn" type="button" id="fwd-btn" aria-label="Forward 5 minutes">+5 min</button>
+        <label>Speed <select id="speed"><option value="1">1x</option><option value="10">10x</option><option value="60" selected>60x</option><option value="300">300x</option><option value="900">900x</option></select></label>
+        <span class="clock" id="clock" aria-live="off">9:00 AM</span><span class="small muted">Eastern</span>
+        <label class="small"><input type="checkbox" id="beep"> Beep on encounter</label>
+        <label class="small"><input type="checkbox" id="show-all"> Show all routes</label>
+        <label class="small"><input type="checkbox" id="show-low"> Mark low-confidence terrain</label>
+      </div>
+      <div class="sliderbox"><input type="range" id="slider" min="25200" max="64800" step="5" value="32400" aria-label="Time of day"></div>
+      <div class="ticks" id="ticks" aria-label="Encounter markers on the timeline"></div>
+      <div class="small muted" id="next-ev" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <section class="panel" aria-label="Results and tools">
+    <div class="tabs" role="tablist" aria-label="Tools" id="tabs">
+      <button role="tab" id="tb-events" aria-selected="true" aria-controls="tab-events">Encounters</button>
+      <button role="tab" id="tb-opt" aria-selected="false" aria-controls="tab-opt">Start-time optimizer</button>
+      <button role="tab" id="tb-briefing" aria-selected="false" aria-controls="tab-briefing">Leader briefing</button>
+      <button role="tab" id="tb-terrain" aria-selected="false" aria-controls="tab-terrain">Terrain editor</button>
+      <button role="tab" id="tb-stops" aria-selected="false" aria-controls="tab-stops">Stops &amp; waypoints</button>
+      <button role="tab" id="tb-settings" aria-selected="false" aria-controls="tab-settings">Model settings</button>
+      <button role="tab" id="tb-gpx" aria-selected="false" aria-controls="tab-gpx">Add GPX</button>
+    </div>
+
+    <div class="tabpanel" id="tab-events" role="tabpanel" aria-labelledby="tb-events">
+      <h2>Predicted encounters</h2>
+      <p class="small muted" id="ev-summary"></p>
+      <div class="tablewrap"><table id="ev-table"><thead><tr><th>Time (ET)</th><th>Groups</th><th>Relationship</th><th>Terrain</th><th>Where</th><th>Duration</th><th>Riders</th><th>Severity</th></tr></thead><tbody></tbody></table></div>
+      <p class="small muted">Click a row to jump the map and clock to that moment. An encounter means a rider of one group is within the threshold distance (default 30 m) of a rider of another group, measured on the map, so shared roads and crossings both count.</p>
+    </div>
+
+    <div class="tabpanel" id="tab-opt" role="tabpanel" aria-labelledby="tb-opt" hidden>
+      <h2>Start-time optimizer</h2>
+      <p class="small muted">Searches departure times between 7:00 AM and 3:00 PM in 5 minute steps for the groups above. Locked groups keep their departure time. Severity weights Class VI overtakes and head-on meetings most heavily and paved encounters least. Schedules must also stay clear when either group is up to 15 minutes early or late.</p>
+      <div class="q-ctl" id="opt-lock"></div>
+      <div class="q-ctl"><button class="btn primary" type="button" id="opt-btn">Find best start times</button><span class="small muted" id="opt-status" role="status"></span></div>
+      <div id="opt-out"></div>
+    </div>
+
+    <div class="tabpanel" id="tab-briefing" role="tabpanel" aria-labelledby="tb-briefing" hidden>
+      <h2>Leader briefing and encounter forecast</h2>
+      <p class="small muted">Runs the scenario many times with random speed variation (about 6% per group plus local variation), stop-time variation and a start jitter of about 2 minutes, then reports how often each encounter happens and when.</p>
+      <div class="q-ctl"><label>Runs <select id="mc-runs"><option>30</option><option selected>60</option><option>100</option></select></label>
+        <button class="btn primary" type="button" id="mc-btn">Run forecast</button>
+        <button class="btn" type="button" id="copy-brief">Copy briefing (Markdown)</button>
+        <button class="btn" type="button" id="print-brief">Print briefing</button>
+        <span class="small muted" id="mc-status" role="status"></span></div>
+      <div class="progress" id="mc-prog" hidden><div></div></div>
+      <div id="forecast"></div>
+      <h3>Briefing text</h3>
+      <pre class="brief" id="brief-text" tabindex="0"></pre>
+    </div>
+
+    <div class="tabpanel" id="tab-terrain" role="tabpanel" aria-labelledby="tb-terrain" hidden>
+      <h2>Terrain editor</h2>
+      <p class="small muted">OpenStreetMap tags are not perfect. Pick a route, then click two points on that route on the map (or type mile values), choose the terrain and apply. Edits are saved in this browser and can be exported or imported as JSON.</p>
+      <div class="q-ctl">
+        <label>Route <select id="te-route"></select></label>
+        <label>From mile <input type="number" id="te-a" min="0" step="0.1"></label>
+        <label>to mile <input type="number" id="te-b" min="0" step="0.1"></label>
+        <label class="small"><input type="checkbox" id="te-pick"> Click map to pick</label>
+      </div>
+      <div class="q-ctl">
+        <button class="btn small" type="button" data-te="0">Set paved</button>
+        <button class="btn small" type="button" data-te="1">Set maintained dirt</button>
+        <button class="btn small" type="button" data-te="2">Set Class VI</button>
+        <button class="btn small" type="button" data-te="clear">Clear edits in range</button>
+        <span class="small muted" id="te-info"></span>
+      </div>
+      <div class="q-ctl"><button class="btn small" type="button" id="te-export">Export edits (JSON)</button>
+        <label class="btn small">Import edits <input type="file" id="te-import" accept=".json,application/json" hidden></label>
+        <button class="btn small" type="button" id="te-clearall">Remove all edits</button></div>
+      <h3>Terrain summary by route</h3>
+      <div class="tablewrap"><table id="te-sum"><thead><tr><th>Route</th><th>Paved</th><th>Maint. dirt</th><th>Class VI</th><th>High / med / low confidence</th><th>Edited</th></tr></thead><tbody></tbody></table></div>
+      <h3>Current edits</h3>
+      <div id="te-list" class="small"></div>
+    </div>
+
+    <div class="tabpanel" id="tab-stops" role="tabpanel" aria-labelledby="tb-stops" hidden>
+      <h2>Stops &amp; waypoints</h2>
+      <p class="small muted">Regroup stops come from the gas and food waypoints in the GPX files. Default rule: the first stop with food is the lunch stop (45 min), every other gas or food stop is a short stop (15 min). Change any value (0 = skip). Stop signs, signals and other controls come from OpenStreetMap; some are inferred (see About).</p>
+      <div class="q-ctl"><label>Route <select id="st-route"></select></label></div>
+      <div class="tablewrap"><table id="st-table"><thead><tr><th>Waypoint</th><th>Mile</th><th>Stop (min)</th></tr></thead><tbody></tbody></table></div>
+      <h3>Other waypoints from the GPX (information)</h3>
+      <div id="st-info" class="small"></div>
+      <p class="small" id="st-controls"></p>
+    </div>
+
+    <div class="tabpanel" id="tab-settings" role="tabpanel" aria-labelledby="tb-settings" hidden>
+      <h2>Model settings</h2>
+      <div class="grid2" id="settings"></div>
+      <div class="q-ctl"><button class="btn" type="button" id="settings-reset">Restore default settings</button></div>
+    </div>
+
+    <div class="tabpanel" id="tab-gpx" role="tabpanel" aria-labelledby="tb-gpx" hidden>
+      <h2>Add your own GPX route</h2>
+      <p class="small muted">The file is read in your browser only (nothing is uploaded). Without OpenStreetMap data, the whole route gets one default terrain which you then refine in the Terrain editor. Added routes live in this browser session (and are kept in local storage if small enough). To add routes permanently, run the build scripts in the repository.</p>
+      <div class="q-ctl"><input type="file" id="gpx-file" accept=".gpx,application/gpx+xml,text/xml">
+        <label>Name <input type="text" id="gpx-name" placeholder="My route" size="18"></label>
+        <label>Default terrain <select id="gpx-cls"><option value="1">maintained dirt</option><option value="0">paved</option><option value="2">Class VI</option></select></label>
+        <button class="btn" type="button" id="gpx-add">Add route</button></div>
+      <div class="small" id="gpx-msg" role="status"></div>
+      <div id="gpx-list" class="small"></div>
+    </div>
+  </section>
+</main>
+<footer>
+  <p><strong>Created by Dan Britton with Grok Bot (AI assistant).</strong> Questions or corrections: <a href="mailto:BrittonSolutions@icloud.com">BrittonSolutions@icloud.com</a>.</p>
+  <p>This project is separate from, and unrelated to, Dan's physics experiments.</p>
+  <p>Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> (ODbL). Map tiles &copy; OpenStreetMap. Mapping library: <a href="https://leafletjs.com">Leaflet</a>. Source code (MIT) on <a href="https://github.com/9wzg44nz44-glitch/near-ride-deconfliction">GitHub</a>.</p>
+  <p>Estimates only; not a safety system. Class VI roads are used at your own risk.</p>
+</footer>
+<script src="vendor/leaflet/leaflet.js"></script>
+<script type="module" src="js/app.js"></script>
+<script src="assets/share-button.js" defer></script>
+</body>
+</html>

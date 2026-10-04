@@ -38,6 +38,7 @@ const KY = (Math.PI / 180) * R_EARTH;
 const LAT0 = 42.9;
 const KX = KY * Math.cos((LAT0 * Math.PI) / 180);
 const projX = (lon) => lon * KX, projY = (lat) => lat * KY;
+export const projectLatLon = (lat, lon) => [projX(lon), projY(lat)];
 
 export function mulberry32(seed) {
   let a = seed >>> 0;
@@ -514,7 +515,10 @@ export function optimize(ctx, scenario, lockedIds = [], opts = {}) {
       let c = 0; for (const e of evs) c += e.score * (1 + Math.min(e.duration, 600) / 600 * 0.25);
       t[k - kMin] = c;
     }
-    table.set(key, t); return t;
+    // robustness: a stagger only counts as good if every start difference within +/-15 min is also good
+    const W = opts.robustSlots ?? 3, sm = new Float64Array(t.length);
+    for (let k = 0; k < t.length; k++) { let m = 0; for (let q = Math.max(0, k - W); q <= Math.min(t.length - 1, k + W); q++) m = Math.max(m, t[q]); sm[k] = m; }
+    t = sm; table.set(key, t); return t;
   };
   const free = [], fixedSlots = new Array(G).fill(null);
   groups.forEach((g, i) => { if (lockedSet.has(g.id)) fixedSlots[i] = Math.round((g.t0 - T_MIN) / STEP); else free.push(i); });
@@ -563,7 +567,11 @@ export function optimize(ctx, scenario, lockedIds = [], opts = {}) {
   // prefer low cost, then compact, then small change; keep schedules at least 15 min apart in some group
   const pool = cands.filter((c) => c.cost <= best + 1e-9).sort((a, b) => spreadOf(a.slots) - spreadOf(b.slots) || shiftOf(a.slots) - shiftOf(b.slots));
   const ordered = [...pool, ...cands.filter((c) => c.cost > best + 1e-9)];
-  for (const c of ordered) { if (picks.every((p) => different(p, c))) picks.push(c); if (picks.length >= 3) break; }
+  const sig = (c) => c.slots.map((s, i) => i).sort((a, b) => c.slots[a] - c.slots[b] || a - b).join(',');
+  // first: best compact schedule; second: best schedule with a different departure ORDER (e.g. other group goes first); then fill with schedules >= 30 min apart
+  for (const c of ordered) { if (!picks.length) { picks.push(c); break; } }
+  for (const c of ordered) { if (picks.length < 2 && c.cost <= best + 1e-9 && sig(c) !== sig(picks[0]) && different(picks[0], c)) picks.push(c); }
+  for (const c of ordered) { if (picks.length >= 3) break; if (picks.every((p) => p.slots.some((s, i) => Math.abs(s - c.slots[i]) * STEP >= 1800))) picks.push(c); }
   const describe = (slotsArr) => {
     const gs = groups.map((g, i) => ({ ...g, t0: T_MIN + slotsArr[i] * STEP }));
     const r = runScenario(ctx, { ...scenario, groups: gs });
@@ -574,12 +582,12 @@ export function optimize(ctx, scenario, lockedIds = [], opts = {}) {
   // for the first free group vs the first other group: smallest stagger that reaches the best cost
   let minStagger = null;
   if (G >= 2) {
-    const t = costDelta(0, 1); let bestAbs = null;
-    for (let k = kMin; k <= kMax; k++) if (t[k - kMin] <= best + 1e-9 && (bestAbs == null || Math.abs(k) < Math.abs(bestAbs))) bestAbs = k;
+    const t = costDelta(0, 1); let bestAbs = null; const bestPair = Math.min(...t);
+    for (let k = kMin; k <= kMax; k++) if (t[k - kMin] <= bestPair + 1e-9 && (bestAbs == null || Math.abs(k) < Math.abs(bestAbs))) bestAbs = k;
     const curve = []; for (let k = kMin; k <= kMax; k++) curve.push([k * STEP, t[k - kMin]]);
     minStagger = { pair: [groups[0].id, groups[1].id], names: [groups[0].name, groups[1].name], deltaSec: bestAbs == null ? null : bestAbs * STEP, curve };
   }
-  return { before, beforeCost: origCost, after, bestCost: best, minStagger, step: STEP, window: [T_MIN, T_MAX] };
+  return { before, beforeCost: origCost, after, bestCost: best, minStagger, step: STEP, window: [T_MIN, T_MAX], robustMarginSec: (opts.robustSlots ?? 3) * STEP };
 }
 
 // ------------------------------------------------------------------ leader briefing text
