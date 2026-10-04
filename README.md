@@ -41,7 +41,7 @@ npm run fetch:osm      # Overpass API -> data/osm-cache/ (ways with tags, stop/y
 npm run build:terrain  # map-match, classify, smooth -> docs/data/routes.json
 ```
 
-1. `scripts/build-routes.mjs` parses the GPX files, keeps the longest track segment (BBH-style stub tracks are dropped), simplifies with Douglas-Peucker at 2.5 m, and attaches each waypoint to the nearest track point.
+1. `scripts/build-routes.mjs` parses the GPX files, keeps the longest track segment (short stub tracks are dropped), simplifies with Douglas-Peucker at 2.5 m, and attaches each waypoint to the nearest track point.
 2. `scripts/fetch-osm.mjs` downloads, tile by tile, every `highway` way (except footways, steps, cycleways) and every stop, give-way, signal and level-crossing node near the routes. Mirrors are tried in turn. Results are cached in `data/osm-cache/` so the next step is reproducible offline.
 3. `scripts/classify.mjs` samples each route every 10 m, matches to the nearest way within 30 m (direction aware, with a continuity bonus), classifies each way from its tags, applies waypoint hints, fills gaps, merges stretches shorter than 80 m, and extracts `maxspeed`, stop signs (only for the direction facing the sign), signals and inferred junction stops. It writes `docs/data/routes.json` with a confidence on every stretch.
 
