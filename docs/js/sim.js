@@ -207,6 +207,7 @@ export function simulateGroup(path, grp, P = DEFAULT_PARAMS, noise = null) {
       const Rr = path.g.Rc[i]; if (Rr < 1e8) v = Math.min(v, Math.max(P.vCornerMin, Math.sqrt(latAcc * Rr)));
     }
     if (mult) v *= mult[i];
+    if (grp.speedFactor) v *= grp.speedFactor;
     vcell[i] = Math.max(v, 1.5);
   }
   const v = new Float32Array(n + 1);
@@ -221,6 +222,11 @@ export function simulateGroup(path, grp, P = DEFAULT_PARAMS, noise = null) {
     else { v[e] = Math.min(v[e], P.yieldCapMps); }
   }
   for (const w of path.wpts) { v[w.e] = 0; regroup[w.e] = 1; dwell[w.e] = jit(w.minutes * 60); }
+  // per-group extra stops, e.g. {mile, min} entered from a reality check (mile on the route's own forward mileage)
+  for (const x of grp.delays || []) {
+    const e = Math.round((path.reverse ? path.L - x.mile * 1609.344 : x.mile * 1609.344) / ds);
+    if (e > 0 && e < n && x.min > 0) { v[e] = 0; regroup[e] = 1; dwell[e] += jit(x.min * 60); }
+  }
   v[0] = 0; v[n] = 0;
   // 3) forward / backward passes for accel & braking limits
   for (let i = 0; i < n; i++) { const a = path.cls[i] === 2 ? P.accelCvi : P.accel; v[i + 1] = Math.min(v[i + 1], Math.sqrt(v[i] * v[i] + 2 * a * ds)); }

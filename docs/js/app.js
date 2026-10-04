@@ -1,5 +1,6 @@
 import * as S from './sim.js';
 import { parseGpxToRoute } from './gpx.js';
+import { calibrateObservation } from './calibrate.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -37,7 +38,7 @@ const TOGGLES = [
 // ---------------------------------------------------------------- state
 const state = {
   routes: [], ctx: null, rows: {}, obs: { on: false, routeId: 'sbh', t0: 9 * 3600 + 45 * 60, reverse: false, skill: 'intermediate' },
-  params: {}, overrides: {}, wptMinutes: {}, res: 60, custom: [],
+  params: {}, overrides: {}, wptMinutes: {}, res: 60, custom: [], calib: [],
   sims: [], events: [], P: S.DEFAULT_PARAMS, t: 9 * 3600, playing: false, forecast: null, tMin: T_MIN, tMax: 18 * 3600,
 };
 const timeStr = (s, withSec) => { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60; return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}${withSec || ss ? ':' + String(ss).padStart(2, '0') : ''}`; };
@@ -45,16 +46,16 @@ const parseTime = (v) => { if (!v) return null; const p = v.split(':').map(Numbe
 
 function defaultRows() {
   const rows = {};
-  for (const r of state.routes) rows[r.id] = { n: 0, t0: 9 * 3600, skill: 'intermediate', reverse: false };
+  for (const r of state.routes) rows[r.id] = { n: 0, t0: 9 * 3600, skill: 'intermediate', reverse: false, pace: 100, delays: [] };
   if (rows.sbh) { rows.sbh.n = 18; rows.sbh.t0 = 9 * 3600; }
   if (rows.mbh) { rows.mbh.n = 7; rows.mbh.t0 = 9.5 * 3600; }
   return rows;
 }
 function saveState() {
   try {
-    localStorage.setItem('near.state.v1', JSON.stringify({ rows: state.rows, obs: state.obs, params: state.params, overrides: state.overrides, wptMinutes: state.wptMinutes, res: state.res }));
+    localStorage.setItem('near.state.v1', JSON.stringify({ rows: state.rows, obs: state.obs, params: state.params, overrides: state.overrides, wptMinutes: state.wptMinutes, res: state.res, calib: state.calib }));
     const diff = {}; for (const k of Object.keys(state.params)) if (state.params[k] !== S.DEFAULT_PARAMS[k]) diff[k] = state.params[k];
-    const rows = {}; for (const [id, r] of Object.entries(state.rows)) rows[id] = [r.n, r.t0, r.skill === 'fast' ? 1 : 0, r.reverse ? 1 : 0];
+    const rows = {}; for (const [id, r] of Object.entries(state.rows)) rows[id] = [r.n, r.t0, r.skill === 'fast' ? 1 : 0, r.reverse ? 1 : 0, r.pace || 100, r.delays || []];
     const hash = btoa(unescape(encodeURIComponent(JSON.stringify({ r: rows, o: state.obs.on ? state.obs : 0, p: diff }))));
     history.replaceState(null, '', '#s=' + hash);
   } catch (e) { /* storage may be unavailable */ }
@@ -62,13 +63,13 @@ function saveState() {
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem('near.state.v1') || 'null');
-    if (saved) { Object.assign(state, { obs: { ...state.obs, ...saved.obs }, params: saved.params || {}, overrides: saved.overrides || {}, wptMinutes: saved.wptMinutes || {}, res: saved.res || 60 }); for (const [id, r] of Object.entries(saved.rows || {})) if (state.rows[id]) Object.assign(state.rows[id], r); }
+    if (saved) { Object.assign(state, { obs: { ...state.obs, ...saved.obs }, params: saved.params || {}, overrides: saved.overrides || {}, wptMinutes: saved.wptMinutes || {}, res: saved.res || 60, calib: saved.calib || [] }); for (const [id, r] of Object.entries(saved.rows || {})) if (state.rows[id]) Object.assign(state.rows[id], r); }
   } catch (e) {}
   try {
     const m = location.hash.match(/^#s=(.+)$/);
     if (m) {
       const h = JSON.parse(decodeURIComponent(escape(atob(m[1]))));
-      for (const [id, a] of Object.entries(h.r || {})) if (state.rows[id]) state.rows[id] = { n: a[0], t0: a[1], skill: a[2] ? 'fast' : 'intermediate', reverse: !!a[3] };
+      for (const [id, a] of Object.entries(h.r || {})) if (state.rows[id]) state.rows[id] = { n: a[0], t0: a[1], skill: a[2] ? 'fast' : 'intermediate', reverse: !!a[3], pace: a[4] || 100, delays: a[5] || [] };
       if (h.o) state.obs = { ...state.obs, ...h.o, on: true };
       if (h.p) state.params = { ...state.params, ...h.p };
     }
@@ -81,9 +82,9 @@ function buildScenario() {
   const groups = [];
   for (const r of state.routes) {
     const row = state.rows[r.id]; if (!row || !(row.n > 0)) continue;
-    groups.push({ id: r.id, routeId: r.id, name: r.name, n: row.n, skill: row.skill, t0: row.t0, reverse: row.reverse, color: r.color });
+    groups.push({ id: r.id, routeId: r.id, name: r.name, n: row.n, skill: row.skill, t0: row.t0, reverse: row.reverse, color: r.color, speedFactor: row.pace && row.pace !== 100 ? row.pace / 100 : undefined, delays: row.delays?.length ? row.delays : undefined });
   }
-  if (state.obs.on && routeById(state.obs.routeId)) groups.push({ id: 'obs', routeId: state.obs.routeId, name: 'Dan (observer)', n: 1, skill: state.obs.skill, t0: state.obs.t0, reverse: state.obs.reverse, color: '#f5c400', observer: true });
+  if (state.obs.on && routeById(state.obs.routeId)) groups.push({ id: 'obs', routeId: state.obs.routeId, name: 'Dan (observer)', n: 1, skill: state.obs.skill, t0: state.obs.t0, reverse: state.obs.reverse, color: '#f5c400', observer: true, speedFactor: state.obs.pace && state.obs.pace !== 100 ? state.obs.pace / 100 : undefined, delays: state.obs.delays?.length ? state.obs.delays : undefined });
   return { groups, params: { ...state.params }, overrides: state.overrides, wptMinutes: state.wptMinutes };
 }
 
@@ -98,7 +99,9 @@ function renderRows() {
       <td><input type="number" min="0" max="60" step="1" value="${row.n}" aria-label="Riders on ${esc(r.name)}" data-f="n"></td>
       <td><input type="time" min="07:00" max="15:00" step="${step}" value="${timeStr(row.t0, step < 60)}" aria-label="Departure time for ${esc(r.name)}, Eastern" data-f="t0"></td>
       <td><select data-f="skill" aria-label="Skill level for ${esc(r.name)}"><option value="intermediate"${row.skill === 'intermediate' ? ' selected' : ''}>Intermediate</option><option value="fast"${row.skill === 'fast' ? ' selected' : ''}>Fast</option></select></td>
-      <td><select data-f="reverse" aria-label="Direction for ${esc(r.name)}"><option value="0">Forward</option><option value="1"${row.reverse ? ' selected' : ''}>Reversed</option></select></td>`;
+      <td><select data-f="reverse" aria-label="Direction for ${esc(r.name)}"><option value="0">Forward</option><option value="1"${row.reverse ? ' selected' : ''}>Reversed</option></select></td>
+      <td><input type="number" min="40" max="160" step="5" value="${row.pace || 100}" aria-label="Pace percent for ${esc(r.name)}" data-f="pace"></td>`;
+    if (row.delays?.length) tr.firstElementChild.insertAdjacentHTML('beforeend', '<div class="small">' + row.delays.map((d, i) => `extra stop ${d.min} min at mile ${d.mile.toFixed(1)} <button class="btn small" type="button" data-deldelay="${r.id}:${i}" aria-label="Remove extra stop">x</button>`).join('<br>') + '</div>');
     tb.appendChild(tr);
   }
   const o = state.obs;
@@ -107,7 +110,9 @@ function renderRows() {
     <td><select data-f="routeId" aria-label="Observer route">${state.routes.map((r) => `<option value="${r.id}"${o.routeId === r.id ? ' selected' : ''}>${esc(r.name)}</option>`).join('')}</select></td>
     <td><input type="time" min="07:00" max="15:00" step="${step}" value="${timeStr(o.t0, step < 60)}" aria-label="Observer departure time, Eastern" data-f="t0"></td>
     <td><select data-f="skill" aria-label="Observer skill"><option value="intermediate"${o.skill === 'intermediate' ? ' selected' : ''}>Intermediate</option><option value="fast"${o.skill === 'fast' ? ' selected' : ''}>Fast</option></select></td>
-    <td><select data-f="reverse" aria-label="Observer direction"><option value="0">Forward</option><option value="1"${o.reverse ? ' selected' : ''}>Reversed</option></select></td>`;
+    <td><select data-f="reverse" aria-label="Observer direction"><option value="0">Forward</option><option value="1"${o.reverse ? ' selected' : ''}>Reversed</option></select></td>
+    <td><input type="number" min="40" max="160" step="5" value="${o.pace || 100}" aria-label="Observer pace percent" data-f="pace"></td>`;
+  if (o.delays?.length) tr.firstElementChild.insertAdjacentHTML('beforeend', '<div class="small">' + o.delays.map((d, i) => `extra stop ${d.min} min at mile ${d.mile.toFixed(1)} <button class="btn small" type="button" data-deldelay="__obs:${i}" aria-label="Remove extra stop">x</button>`).join('<br>') + '</div>');
   tb.appendChild(tr);
   $('#res').value = String(state.res);
 }
@@ -118,6 +123,7 @@ function onRowChange(e) {
     if (f === 'on') state.obs.on = el.checked;
     else if (f === 't0') state.obs.t0 = clamp(parseTime(el.value) ?? state.obs.t0, T_MIN, T_MAX);
     else if (f === 'reverse') state.obs.reverse = el.value === '1';
+    else if (f === 'pace') state.obs.pace = clamp(+el.value || 100, 40, 160);
     else state.obs[f] = el.value;
     tr.classList.toggle('row-off', !state.obs.on);
   } else {
@@ -125,6 +131,7 @@ function onRowChange(e) {
     if (f === 'n') row.n = clamp(Math.round(+el.value || 0), 0, 60);
     else if (f === 't0') row.t0 = clamp(parseTime(el.value) ?? row.t0, T_MIN, T_MAX);
     else if (f === 'reverse') row.reverse = el.value === '1';
+    else if (f === 'pace') row.pace = clamp(+el.value || 100, 40, 160);
     else row[f] = el.value;
     tr.classList.toggle('row-off', !(row.n > 0));
   }
@@ -151,7 +158,7 @@ function runNow() {
   renderAfterRun();
 }
 function renderAfterRun() {
-  drawRoutes(); drawEvents(); rebuildDots(); renderLegend(); renderEventsTable(); renderTicks(); renderQuestion(); renderOptLocks(); renderBriefingText(); renderForecast(); updateFrame(true); renderTerrainSummary();
+  drawRoutes(); drawEvents(); rebuildDots(); renderLegend(); renderEventsTable(); renderTicks(); renderQuestion(); renderOptLocks(); renderBriefingText(); renderForecast(); updateFrame(true); renderTerrainSummary(); renderCalib(); drawMileMarkers();
 }
 
 // ---------------------------------------------------------------- map
@@ -162,8 +169,8 @@ function initMap() {
   rendererCanvas = L_.canvas({ padding: 0.4 });
   map = L_.map('map', { preferCanvas: true, zoomControl: true, attributionControl: true }).setView([42.85, -72.05], 10);
   L_.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' }).addTo(map);
-  for (const k of ['terrain', 'lines', 'conf', 'wp', 'sel', 'ev', 'dots', 'pulse']) layers[k] = L_.layerGroup().addTo(map);
-  map.on('click', onMapClick);
+  for (const k of ['terrain', 'lines', 'conf', 'wp', 'miles', 'sel', 'calib', 'ev', 'dots', 'pulse']) layers[k] = L_.layerGroup().addTo(map);
+  map.on('click', onMapClick); map.on('zoomend', drawMileMarkers); map.on('mousemove', hoverMile); map.on('mouseout', () => map.closeTooltip(hoverTip));
 }
 function shownRoutes() {
   const ids = new Set(state.sims.map((s) => s.grp.routeId));
@@ -497,6 +504,7 @@ function drawSelection() {
   L_.polyline(pts, { color: '#00e5ff', weight: 12, opacity: 0.55, lineCap: 'butt', interactive: false }).addTo(layers.sel);
 }
 function onMapClick(e) {
+  if ($('#ca-pick').checked) { fillFromMap(e); return; }
   if (!$('#te-pick').checked) return;
   const r = teRoute(); if (!r) return;
   const g = S.getGeom(r), [px, py] = S.projectLatLon(e.latlng.lat, e.latlng.lng);
@@ -593,6 +601,117 @@ function removeCustom(id) {
   saveCustom(); reinitWorker(); refreshRouteSelects(); renderRows(); renderCustomList(); renderStops(); scheduleRun();
 }
 
+
+// ---------------------------------------------------------------- mile markers + hover
+const hoverTip = L_.tooltip({ direction: 'top', offset: [0, -6], className: 'near-hover', permanent: false, opacity: 0.95 });
+function drawMileMarkers() {
+  if (!map) return;
+  layers.miles.clearLayers();
+  const z = map.getZoom(), step = z >= 14 ? 1 : z >= 12 ? 5 : 10;
+  shownRoutes().forEach((r, ri) => {
+    const g = S.getGeom(r); const abbr = r.id.toUpperCase().slice(0, 4);
+    for (let m = step; m * MI < r.lengthM - 200; m += step) {
+      const e = Math.round(m * MI / g.ds);
+      L_.marker([g.lat[e], g.lon[e]], { icon: L_.divIcon({ className: '', html: `<span class="mm" style="color:${r.color};border-color:${r.color};margin-top:${ri * 15}px">${abbr} ${m}</span>`, iconSize: [0, 0] }), interactive: false, keyboard: false }).addTo(layers.miles);
+    }
+  });
+}
+function nearbyMiles(latlng, px = 16) {
+  const mpp = 40075016.686 * Math.cos(latlng.lat * Math.PI / 180) / (256 * 2 ** map.getZoom());
+  const maxM = px * mpp; const [x, y] = S.projectLatLon(latlng.lat, latlng.lng); const out = [];
+  for (const r of shownRoutes()) {
+    const g = S.getGeom(r); let bi = -1, bd = maxM * maxM;
+    for (let i = 0; i < g.n; i++) { const d = (g.cx[i] - x) ** 2 + (g.cy[i] - y) ** 2; if (d < bd) { bd = d; bi = i; } }
+    if (bi >= 0) { const t = S.applyOverrides(r, state.overrides[r.id]); out.push({ route: r, mile: bi * g.ds / MI, cell: bi, cls: t.cls[bi], dist: Math.sqrt(bd), road: (r.terrain.find((s) => bi * g.ds >= s.a && bi * g.ds < s.b) || {}).name || '' }); }
+  }
+  return out.sort((p, q) => p.dist - q.dist);
+}
+let hoverBusy = false;
+function hoverMile(e) {
+  if (hoverBusy || !state.routes.length) return; hoverBusy = true;
+  setTimeout(() => {
+    hoverBusy = false;
+    const hits = nearbyMiles(e.latlng);
+    if (!hits.length) { map.closeTooltip(hoverTip); return; }
+    hoverTip.setLatLng(e.latlng).setContent(hits.map((h) => `${esc(h.route.name)}: mile ${h.mile.toFixed(1)}, ${S.CLS_NAMES[h.cls]}${h.road ? ', ' + esc(h.road) : ''}`).join('<br>'));
+    if (!map.hasLayer(hoverTip)) map.openTooltip(hoverTip);
+  }, 50);
+}
+
+// ---------------------------------------------------------------- reality check / calibrate
+const getRow = (id) => (id === 'obs' ? state.obs : state.rows[id]);
+function fillCalibSelects() {
+  const rs = $('#ca-route'), gs = $('#ca-group'); const cr = rs.value, cg = gs.value;
+  rs.innerHTML = state.routes.map((r) => `<option value="${r.id}">${esc(r.name)}</option>`).join(''); if (state.routes.some((r) => r.id === cr)) rs.value = cr; else if (state.routes.some((r) => r.id === 'mbh')) rs.value = 'mbh';
+  const groups = state.sims.map((s) => s.grp);
+  gs.innerHTML = groups.map((g) => `<option value="${g.id}">${esc(g.name)}</option>`).join(''); if (groups.some((g) => g.id === cg)) gs.value = cg; else if (groups.some((g) => g.id === 'sbh')) gs.value = 'sbh';
+}
+function renderCalib() {
+  fillCalibSelects();
+  layers.calib.clearLayers();
+  const out = $('#ca-out');
+  if (!state.calib.length) { out.innerHTML = '<p class="small muted">No sightings yet. Add one above.</p>'; return; }
+  out.innerHTML = '';
+  state.calib.forEach((ob, idx) => {
+    const res = calibrateObservation(state.sims, new Map(state.routes.map((r) => [r.id, r])), ob, S.projectLatLon);
+    const card = document.createElement('div'); card.className = 'obs-card';
+    const rname = routeById(ob.routeId)?.name || ob.routeId;
+    const seen = `${esc(res.groupName || (state.sims.find((s) => s.grp.id === ob.groupId)?.grp.name) || ob.groupId)} at ${esc(rname)} mile ${(+ob.mile).toFixed(1)}${ob.t != null ? ' around ' + S.fmtClock(ob.t) : ' (time unknown)'}`;
+    let html = `<strong>Sighting ${idx + 1}: ${seen}</strong>`;
+    if (res.error) { html += `<ul><li>${esc(res.error)}</li></ul>`; }
+    else {
+      html += `<ul><li>Spot: ${res.lat.toFixed(5)}, ${res.lon.toFixed(5)}; <span class="chip t-${res.terrain}">${S.CLS_NAMES[res.terrain]}</span>${res.road ? ', ' + esc(res.road) : ''}.</li>
+        <li>That is mile ${res.groupMile.toFixed(1)} of ${esc(res.groupName)}'s own route, which passes here heading <strong>${res.direction}</strong> relative to ${esc(rname)}'s mileage.</li>
+        <li>Model: ${esc(res.groupName)} (${state.sims.find((s) => s.grp.id === ob.groupId).N} riders) reaches this spot at <strong>${S.fmtClock(res.tHead)}</strong> and the last rider leaves at <strong>${S.fmtClock(res.tTail)}</strong>. Before it the model has ${res.stoppedMin.toFixed(0)} min of stops, ${res.classMiles[2].toFixed(1)} mi of Class VI and an average of ${res.avgMphModel.toFixed(0)} mph while moving.</li>`;
+      for (const o of res.others) html += `<li>At ${S.fmtClock(ob.t ?? res.tMid)} the model has ${esc(o.name)} ${o.state ? o.state : 'with its head at mile ' + o.mile.toFixed(1) + ' of its route'}.</li>`;
+      if (ob.t != null) {
+        html += `<li>At your time the model has ${esc(res.groupName)}'s head at mile ${res.modelHeadMileAtObs.toFixed(1)} and tail at mile ${res.modelTailMileAtObs.toFixed(1)} of its own route (you saw them at mile ${res.groupMile.toFixed(1)}).</li>`;
+        if (!res.consistent) html += `<li><strong>Implied:</strong> the group is ${Math.abs(res.impliedShiftMin).toFixed(0)} min ${res.impliedShiftMin > 0 ? 'later' : 'earlier'} than modeled: equivalent to a departure ${Math.abs(res.impliedShiftMin).toFixed(0)} min ${res.impliedShiftMin > 0 ? 'later' : 'earlier'}${res.impliedPace ? `, or an overall pace of about ${(res.impliedPace * 100).toFixed(0)}% of the model`  : ''}${res.impliedDelayMin >= 1 ? `, or an extra stop of about ${res.impliedDelayMin.toFixed(0)} min before this spot` : ''}.</li>`;
+        else html += '<li><strong>Consistent</strong> with the model within your tolerance.</li>';
+      }
+      html += '</ul>';
+      if (res.flags.length) html += '<div class="small"><strong>Which assumptions disagree</strong><ul>' + res.flags.filter((f) => !f.startsWith('Timing is consistent')).map((f) => `<li>${esc(f)}</li>`).join('') + '</ul></div>';
+      // map overlay
+      const m = L_.circleMarker([res.lat, res.lon], { radius: 9, color: '#00bcd4', weight: 4, fillColor: '#fff', fillOpacity: 0.6, renderer: rendererCanvas }).bindTooltip(`Sighting ${idx + 1}: ${esc(res.groupName)}${ob.t != null ? ', ' + S.fmtClock(ob.t) : ''}`, { permanent: true, direction: 'right', offset: [10, 0] }).addTo(layers.calib);
+      card.dataset.lat = res.lat; card.dataset.lon = res.lon;
+      if (ob.t != null) {
+        const sim = state.sims.find((s) => s.grp.id === ob.groupId); const r = Math.round(ob.t - sim.t0);
+        if (r >= 0 && r <= sim.endRel) {
+          const hp = S.edgeLatLon(sim.path, sim.head[Math.min(r, sim.len - 1)]);
+          L_.polyline([[res.lat, res.lon], hp], { color: '#00bcd4', weight: 2, dashArray: '5 6', renderer: rendererCanvas, interactive: false }).addTo(layers.calib);
+          L_.circleMarker(hp, { radius: 5, color: '#00bcd4', fillColor: '#00bcd4', fillOpacity: 1, renderer: rendererCanvas }).bindTooltip(`Model: ${esc(res.groupName)} head at ${S.fmtClock(ob.t)}`).addTo(layers.calib);
+        }
+      }
+    }
+    html += `<div class="acts"><button class="btn small" type="button" data-ca="fly:${idx}">Show on map</button>`;
+    if (!res.error && ob.t != null && !res.consistent) html += `<button class="btn small" type="button" data-ca="shift:${idx}">Apply as departure shift</button><button class="btn small" type="button" data-ca="pace:${idx}">Apply as pace</button><button class="btn small" type="button" data-ca="stop:${idx}">Apply as extra stop</button>`;
+    html += `<button class="btn small" type="button" data-ca="del:${idx}">Remove</button></div>`;
+    card.innerHTML = html; out.appendChild(card);
+  });
+}
+function addCalib() {
+  const t = $('#ca-time').value ? parseTime($('#ca-time').value) : null;
+  const ob = { routeId: $('#ca-route').value, mile: Math.max(0, parseFloat($('#ca-mile').value) || 0), groupId: $('#ca-group').value, t, tolMin: clamp(+$('#ca-tol').value || 0, 0, 60), heading: $('#ca-head').value };
+  state.calib.push(ob); saveState(); renderCalib();
+  const last = $('#ca-out').lastElementChild; if (last?.dataset.lat) map.setView([+last.dataset.lat, +last.dataset.lon], Math.max(map.getZoom(), 12));
+}
+function onCalibAction(e) {
+  const b = e.target.closest('[data-ca]'); if (!b) return;
+  const [act, i] = b.dataset.ca.split(':'); const ob = state.calib[+i]; if (!ob) return;
+  if (act === 'del') { state.calib.splice(+i, 1); saveState(); renderCalib(); return; }
+  const res = calibrateObservation(state.sims, new Map(state.routes.map((r) => [r.id, r])), ob, S.projectLatLon);
+  if (act === 'fly') { if (res.lat) map.setView([res.lat, res.lon], Math.max(map.getZoom(), 14)); return; }
+  const row = getRow(ob.groupId); if (!row || !res.ok) return;
+  if (act === 'shift') row.t0 = clamp(Math.round((row.t0 + res.impliedShiftMin * 60) / 60) * 60, T_MIN, T_MAX);
+  if (act === 'pace' && res.impliedPace) row.pace = clamp(Math.round(res.impliedPace * 100), 40, 160);
+  if (act === 'stop') (row.delays ||= []).push({ mile: Math.max(0.5, res.groupMile - 1), min: Math.max(1, Math.round(res.impliedDelayMin)) });
+  renderRows(); scheduleRun();
+}
+function fillFromMap(e) {
+  const hits = nearbyMiles(e.latlng, 20); if (!hits.length) { return; }
+  const h = hits[0]; $('#ca-route').value = h.route.id; $('#ca-mile').value = h.mile.toFixed(1);
+}
+
 // ---------------------------------------------------------------- init
 async function init() {
   const data = await (await fetch('data/routes.json')).json();
@@ -606,7 +725,7 @@ async function init() {
   // events
   $('#rows').addEventListener('change', onRowChange); $('#rows').addEventListener('input', (e) => { if (e.target.type === 'number') onRowChange(e); });
   $('#res').addEventListener('change', (e) => { state.res = +e.target.value; renderRows(); saveState(); });
-  $('#reset-btn').addEventListener('click', () => { state.rows = defaultRows(); state.obs = { on: false, routeId: 'sbh', t0: 9 * 3600 + 45 * 60, reverse: false, skill: 'intermediate' }; renderRows(); scheduleRun(); });
+  $('#reset-btn').addEventListener('click', () => { state.rows = defaultRows(); state.obs = { on: false, routeId: 'sbh', t0: 9 * 3600 + 45 * 60, reverse: false, skill: 'intermediate' }; state.calib = []; renderRows(); scheduleRun(); });
   for (const id of ['#q-x', '#q-y', '#q-t', '#q-from', '#q-to']) $(id).addEventListener('change', computeQuestion);
   $('#play-btn').addEventListener('click', () => setPlaying(!state.playing));
   $('#back-btn').addEventListener('click', () => setTime(state.t - 300)); $('#fwd-btn').addEventListener('click', () => setTime(state.t + 300));
@@ -622,7 +741,7 @@ async function init() {
   const tabs = $$('#tabs [role=tab]');
   tabs.forEach((b) => b.addEventListener('click', () => {
     tabs.forEach((x) => { x.setAttribute('aria-selected', x === b); $('#' + x.getAttribute('aria-controls')).hidden = x !== b; });
-    drawSelection(); if (b.id === 'tb-terrain') { $('#te-pick').checked = true; } else { $('#te-pick').checked = false; }
+    drawSelection(); $('#te-pick').checked = b.id === 'tb-terrain'; $('#ca-pick').checked = b.id === 'tb-calib';
     map.invalidateSize();
   }));
   $('#tabs').addEventListener('keydown', (e) => { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { const i = tabs.indexOf(document.activeElement); const n = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length]; n.focus(); n.click(); } });
@@ -636,6 +755,10 @@ async function init() {
   $('#te-clearall').addEventListener('click', () => { state.overrides = {}; renderTerrainList(); scheduleRun(); });
   $('#te-export').addEventListener('click', () => { const blob = new Blob([JSON.stringify({ app: 'near-ride-deconfliction', version: 1, overrides: state.overrides, wptMinutes: state.wptMinutes }, null, 1)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'near-terrain-edits.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); });
   $('#te-import').addEventListener('change', async (e) => { const f = e.target.files[0]; if (!f) return; try { const j = JSON.parse(await f.text()); if (j.overrides) state.overrides = j.overrides; if (j.wptMinutes) state.wptMinutes = j.wptMinutes; renderTerrainList(); renderStops(); scheduleRun(); $('#te-info').textContent = 'Edits imported.'; } catch (err) { $('#te-info').textContent = 'Could not read that file: ' + err.message; } e.target.value = ''; });
+  $('#ca-add').addEventListener('click', addCalib); $('#ca-out').addEventListener('click', onCalibAction);
+  $('#ca-clear').addEventListener('click', () => { state.calib = []; saveState(); renderCalib(); });
+  $('#ca-example').addEventListener('click', () => { $('#ca-route').value = 'mbh'; $('#ca-mile').value = '22'; if ([...$('#ca-group').options].some((o) => o.value === 'sbh')) $('#ca-group').value = 'sbh'; $('#ca-time').value = ''; $('#ca-head').value = 'same'; addCalib(); });
+  $('#rows').addEventListener('click', (e) => { const b = e.target.closest('[data-deldelay]'); if (!b) return; const [id, i] = b.dataset.deldelay.split(':'); const row = id === '__obs' ? state.obs : state.rows[id]; row.delays.splice(+i, 1); renderRows(); scheduleRun(); });
   $('#st-route').addEventListener('change', renderStops);
   $('#st-table').addEventListener('change', (e) => { const el = e.target; if (el.dataset.w == null) return; const rid = $('#st-route').value; (state.wptMinutes[rid] ||= {})[el.dataset.w] = clamp(+el.value || 0, 0, 180); scheduleRun(); });
   $('#settings').addEventListener('change', (e) => { const el = e.target; const k = el.dataset.k; if (!k) return; state.params[k] = el.type === 'checkbox' ? el.checked : clamp(+el.value, +el.min, +el.max); if (el.type !== 'checkbox') el.value = state.params[k]; renderStops(); scheduleRun(); });
@@ -646,7 +769,7 @@ async function init() {
     try {
       const id = 'c' + (Date.now() % 1e6);
       const r = parseGpxToRoute(await f.text(), { id, name: $('#gpx-name').value.trim() || f.name.replace(/\.gpx$/i, ''), color: PALETTE[(state.routes.length + 2) % PALETTE.length], defaultCls: +$('#gpx-cls').value });
-      state.custom.push(r); state.routes.push(r); state.rows[id] = { n: 0, t0: 9 * 3600, skill: 'intermediate', reverse: false };
+      state.custom.push(r); state.routes.push(r); state.rows[id] = { n: 0, t0: 9 * 3600, skill: 'intermediate', reverse: false, pace: 100, delays: [] };
       saveCustom(); reinitWorker(); refreshRouteSelects(); renderRows(); renderCustomList(); renderStops();
       msg.textContent = `Added "${r.name}" (${r.stats.lengthMi} mi, ${r.pts.length} points, ${r.waypoints.length} waypoints). Set riders above, then refine terrain in the Terrain editor.`;
       scheduleRun();

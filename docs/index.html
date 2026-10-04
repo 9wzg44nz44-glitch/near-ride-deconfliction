@@ -23,7 +23,7 @@
     <h2 id="sc-h">1. Scenario</h2>
     <p class="small muted">Set riders per route (0 = not riding) and departure times in local Eastern clock time, 7:00 AM to 3:00 PM. Defaults: SBH Monadnock 18 riders at 9:00 AM, MBH Monadnock 7 riders at 9:30 AM.</p>
     <div class="tablewrap"><table id="rows"><caption class="small muted" style="text-align:left">Ride groups</caption>
-      <thead><tr><th scope="col">Route</th><th scope="col">Riders</th><th scope="col">Departs (ET)</th><th scope="col">Skill</th><th scope="col">Direction</th></tr></thead>
+      <thead><tr><th scope="col">Route</th><th scope="col">Riders</th><th scope="col">Departs (ET)</th><th scope="col">Skill</th><th scope="col">Direction</th><th scope="col" title="Percent of modeled speed; use below 100 for a slower group">Pace %</th></tr></thead>
       <tbody></tbody></table></div>
     <div class="q-ctl">
       <label>Time resolution <select id="res"><option value="60">1 minute</option><option value="15">15 seconds</option></select></label>
@@ -71,6 +71,7 @@
       <button role="tab" id="tb-events" aria-selected="true" aria-controls="tab-events">Encounters</button>
       <button role="tab" id="tb-opt" aria-selected="false" aria-controls="tab-opt">Start-time optimizer</button>
       <button role="tab" id="tb-briefing" aria-selected="false" aria-controls="tab-briefing">Leader briefing</button>
+      <button role="tab" id="tb-calib" aria-selected="false" aria-controls="tab-calib">Reality check</button>
       <button role="tab" id="tb-terrain" aria-selected="false" aria-controls="tab-terrain">Terrain editor</button>
       <button role="tab" id="tb-stops" aria-selected="false" aria-controls="tab-stops">Stops &amp; waypoints</button>
       <button role="tab" id="tb-settings" aria-selected="false" aria-controls="tab-settings">Model settings</button>
@@ -104,6 +105,26 @@
       <div id="forecast"></div>
       <h3>Briefing text</h3>
       <pre class="brief" id="brief-text" tabindex="0"></pre>
+    </div>
+
+    <div class="tabpanel" id="tab-calib" role="tabpanel" aria-labelledby="tb-calib" hidden>
+      <h2>Reality check / calibrate</h2>
+      <p class="small muted">Enter something you actually saw: which group, at which mile marker of which route, and about when. The tool shows where and when the model has that group, the offset or pace the model would need to match your sighting, and which assumptions disagree. Sightings appear on the map as cyan markers. Hover a route on the map to read its mile marker; with "Click map to fill" on, a click fills the route and mile.</p>
+      <div class="q-ctl">
+        <label>Route <select id="ca-route"></select></label>
+        <label>Mile marker <input type="number" id="ca-mile" min="0" step="0.1" value="22"></label>
+        <label>Group seen <select id="ca-group"></select></label>
+        <label>Approx. time (ET), optional <input type="time" id="ca-time" step="60"></label>
+        <label>Tolerance (min) <input type="number" id="ca-tol" min="0" max="60" step="1" value="10"></label>
+        <label>Heading <select id="ca-head"><option value="any">not sure</option><option value="same">same direction as the route's miles</option><option value="opposite">opposite</option></select></label>
+      </div>
+      <div class="q-ctl">
+        <button class="btn primary" type="button" id="ca-add">Add sighting</button>
+        <button class="btn" type="button" id="ca-example">Example: SBH group at MBH mile 22</button>
+        <label class="small"><input type="checkbox" id="ca-pick"> Click map to fill route and mile</label>
+        <button class="btn small" type="button" id="ca-clear">Remove all sightings</button>
+      </div>
+      <div id="ca-out"></div>
     </div>
 
     <div class="tabpanel" id="tab-terrain" role="tabpanel" aria-labelledby="tb-terrain" hidden>

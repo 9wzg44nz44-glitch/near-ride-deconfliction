@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import * as S from '../docs/js/sim.js';
+import { calibrateObservation } from '../docs/js/calibrate.js';
 
 // synthetic straight route heading north along a meridian, all one terrain class
 function straight(id, km, cls, limit = 0) {
@@ -146,4 +147,34 @@ test('real data: default SBH 18 @ 9:00 vs MBH 7 @ 9:30 runs and is deterministic
   for (const s of a.sims) assert.ok(s.endRel > 3 * 3600 && s.endRel < 10 * 3600, 'ride duration plausible: ' + s.endRel);
   // terrain shares add to 100 %
   for (const r of d.routes) assert.ok(Math.abs(r.stats.pct.reduce((x, y) => x + y, 0) - 100) < 0.3);
+});
+
+test('group pace factor and extra stops delay a group', () => {
+  const r = straight('p', 20, 0);
+  const ctx = S.makeContext([r]);
+  const base = S.simulateScenario(ctx, { groups: [grp('a', 'p', 1, 0)] }).sims[0];
+  const slow = S.simulateScenario(ctx, { groups: [grp('a', 'p', 1, 0, { speedFactor: 0.5 })] }).sims[0];
+  const stop = S.simulateScenario(ctx, { groups: [grp('a', 'p', 1, 0, { delays: [{ mile: 5, min: 10 }] })] }).sims[0];
+  assert.ok(slow.endRel > base.endRel * 1.8);
+  assert.ok(Math.abs(stop.endRel - base.endRel - 600) < 40, `stop added ${stop.endRel - base.endRel}`);
+});
+
+test('reality check: timing delta, implied shift and direction flag', () => {
+  const r = straight('c', 40, 1);
+  const ctx = S.makeContext([r]);
+  const { sims } = S.simulateScenario(ctx, { groups: [grp('g', 'c', 4, 9 * 3600)] });
+  const mile = 10;
+  const e = Math.round(mile * 1609.344 / sims[0].ds);
+  const modelT = sims[0].t0 + sims[0].arr[e];
+  const ok = calibrateObservation(sims, ctx.byId, { routeId: 'c', mile, groupId: 'g', t: modelT + 30, tolMin: 5, heading: 'same' }, S.projectLatLon);
+  assert.ok(ok.ok && ok.consistent && ok.direction === 'same');
+  const late = calibrateObservation(sims, ctx.byId, { routeId: 'c', mile, groupId: 'g', t: modelT + 20 * 60, tolMin: 5, heading: 'opposite' }, S.projectLatLon);
+  assert.ok(!late.consistent && late.impliedShiftMin > 15 && late.impliedShiftMin < 21);
+  assert.ok(late.impliedPace < 0.8 && late.impliedPace > 0.3);
+  assert.ok(late.flags.some((f) => f.startsWith('Direction disagrees')));
+  const rev = S.simulateScenario(ctx, { groups: [grp('g', 'c', 4, 9 * 3600, { reverse: true })] }).sims;
+  const opp = calibrateObservation(rev, ctx.byId, { routeId: 'c', mile, groupId: 'g', t: null, heading: 'any' }, S.projectLatLon);
+  assert.equal(opp.direction, 'opposite');
+  const offr = calibrateObservation(sims, ctx.byId, { routeId: 'c', mile: 5, groupId: 'zzz', t: null }, S.projectLatLon);
+  assert.ok(offr.error);
 });

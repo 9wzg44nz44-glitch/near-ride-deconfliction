@@ -66,6 +66,25 @@ Default posted limits when OSM has no `maxspeed`: paved 35 mph, maintained dirt 
 
 Only about 2 to 3 percent of route length is Class VI with high confidence (explicit tags); most Class VI is `highway=track` with no grade, classified at medium confidence. Review it with the terrain editor.
 
+## Reality check / calibrate and the MBH mile 22 sighting
+
+The "Reality check" tab takes an observed meeting (route, mile marker, approximate time, group seen) and reports the implied departure shift, pace change or extra stop, with a cyan marker on the map and flags for the model assumptions that disagree. Groups also have a "Pace %" and "extra stops" setting, and both routes show mile markers with hover info. Scripts: `node scripts/overlap-report.mjs mbh sbh 30` lists the shared and crossing stretches of two routes; `node scripts/analyze-mile22.mjs` runs the sweeps below.
+
+Dan's report: while riding the MBH route he met SBH at about MBH mile 22 (time to be confirmed) and earlier met them three times before 10:35 AM (SBH left 9:00 with 18 riders, MBH 7 riders left 9:30).
+
+Where the routes meet (30 m threshold, before about MBH mile 40):
+
+| MBH mile | SBH mile | Direction | Terrain |
+|---|---|---|---|
+| 0 to 4.4 | 0 to 4.4 | same | paved (shared start) |
+| 8.6 to 9.3 | 14.8 to 14.1 | opposite | maintained dirt, 1.1 km, 42.8644, -72.0449 |
+| 10.7 to 44.2 | 17.8 to 50.3 | same | mostly paved, Class VI near MBH 40.5 to 44.2 |
+| 20.5 (60 m view only) | 27.6 | crossing | paved/dirt, about 10 m |
+| 41.9 to 42.0 | 53.1 | crossing | Class VI, 42.8045, -72.1458 |
+| 43.2 to 43.6 | 51.2 to 50.8 | opposite | paved, 42.7843, -72.1441 |
+
+MBH mile 22 is on Class VI (Annett Road, 42.78084, -71.95921), which is SBH mile 29.1, same direction. Default model times there: SBH head 9:57:41 AM, tail 9:58:58 AM; MBH head 10:12:31 AM, tail 10:12:58 AM. The MBH group is about 14 minutes behind the SBH tail, and no SBH stop before lunch (about 11:04 AM at SBH mile 50.7) lets MBH catch up, so the model has no meeting before 10:35 AM. Parameter changes that create meetings: an SBH stop of 15 minutes or more at SBH mile 29 (MBH reaches them at mile 22 at 10:12 AM), SBH pace about 80 to 85 percent (overtake near MBH mile 21 to 22 at about 10:05 to 10:10 AM), or MBH leaving earlier. Three separate meetings need several short SBH regroup stops (for example three 4-minute stops at SBH miles 12, 20 and 28 with MBH leaving at 9:25). These are illustrative, not unique, and the model is not calibrated; the actual time of the mile 22 meeting would narrow it down.
+
 ## Repository layout
 
 ```
@@ -73,6 +92,7 @@ docs/                 the website (GitHub Pages root)
   index.html          simulator
   about.html          method, data, limits
   js/sim.js           simulator core (browser, Web Worker and Node)
+  js/calibrate.js     reality check (observed sighting vs model)
   js/app.js           UI;  js/worker.js optimizer and Monte Carlo worker;  js/gpx.js client GPX import
   data/routes.json    processed routes, terrain, stops, waypoints
   vendor/leaflet/     Leaflet 1.9.4 (self-hosted)
@@ -84,7 +104,7 @@ tests/                node:test tests
 
 ## Tests
 
-`npm test` runs `tests/sim.test.mjs`: terrain speed values (paved, dirt, posted limit, Class VI intermediate and fast), column growth, stop sign delay, a faster group overtaking a slower one on Class VI, no encounter with a large stagger, head-on meeting, crossing, terrain override, optimizer, Monte Carlo and a run on the real data.
+`npm test` runs `tests/sim.test.mjs`: terrain speed values (paved, dirt, posted limit, Class VI intermediate and fast), column growth, stop sign delay, a faster group overtaking a slower one on Class VI, no encounter with a large stagger, head-on meeting, crossing, terrain override, optimizer, Monte Carlo, pace and extra stops, the reality check and a run on the real data.
 
 ## Data, license and attribution
 

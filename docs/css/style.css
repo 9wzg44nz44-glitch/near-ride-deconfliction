@@ -99,3 +99,9 @@ code{background:var(--chip);padding:1px 5px;border-radius:4px;font-size:.9em}
   .panel{border:0}
   pre.brief{max-height:none;overflow:visible;border:0;font-size:11pt}
 }
+
+.mm{display:inline-block;font-size:.68rem;font-weight:700;line-height:1;padding:1px 3px;background:rgba(255,255,255,.92);border:1.5px solid;border-radius:4px;white-space:nowrap;pointer-events:none;transform:translate(-50%,-50%)}
+.obs-card{border:1px solid var(--rule);border-left:6px solid #00bcd4;border-radius:10px;padding:10px 12px;margin:8px 0;background:var(--bg)}
+.obs-card ul{margin:.3rem 0 .3rem 1.1rem;padding:0}
+.obs-card .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.leaflet-tooltip.near-hover{font-size:.8rem;line-height:1.3}
