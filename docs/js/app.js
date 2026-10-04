@@ -555,11 +555,11 @@ function renderStops() {
   const ov = state.wptMinutes[r.id] || {};
   defs.forEach((w) => {
     const val = ov[w.idx] != null ? ov[w.idx] : S.resolveWaypointMinutes(w, P);
-    tb.insertAdjacentHTML('beforeend', `<tr><td>${esc(w.name)}<div class="small muted">${w.kinds.join(', ')}</div></td><td>${(w.d / MI).toFixed(1)}</td><td><input type="number" min="0" max="180" step="5" value="${val}" data-w="${w.idx}" aria-label="Stop minutes at ${esc(w.name)}"></td></tr>`);
+    tb.insertAdjacentHTML('beforeend', `<tr><td>${esc(w.name)}<div class="small muted">${w.kinds.join(', ')}${w.off > 300 ? '; pin is ' + (w.off / 1000).toFixed(1) + ' km off the track (side trip, off by default, detour time not modeled)' : ''}</div></td><td>${(w.d / MI).toFixed(1)}</td><td><input type="number" min="0" max="180" step="5" value="${val}" data-w="${w.idx}" aria-label="Stop minutes at ${esc(w.name)}"></td></tr>`);
   });
   if (!defs.length) tb.innerHTML = '<tr><td colspan="3" class="muted">No gas or food waypoints on this route.</td></tr>';
   const used = new Set(); defs.forEach((w) => used.add(w.idx));
-  $('#st-info').innerHTML = '<ul>' + r.waypoints.map((w) => `<li>Mile ${(w.distAlong / MI).toFixed(1)}: <strong>${esc(w.name)}</strong>${w.desc ? ' - ' + esc(w.desc) : ''} <span class="muted">[${esc(w.sym || 'waypoint')}${w.kinds.length ? '; ' + w.kinds.join(', ') : ''}${w.offTrack > 300 ? '; ' + (w.offTrack / 1000).toFixed(1) + ' km off the track, not used as a stop' : ''}]</span></li>`).join('') + '</ul>';
+  $('#st-info').innerHTML = '<ul>' + r.waypoints.map((w) => `<li>Mile ${(w.distAlong / MI).toFixed(1)}: <strong>${esc(w.name)}</strong>${w.desc ? ' - ' + esc(w.desc) : ''} <span class="muted">[${esc(w.sym || 'waypoint')}${w.kinds.length ? '; ' + w.kinds.join(', ') : ''}${w.offTrack > 300 ? '; ' + (w.offTrack / 1000).toFixed(1) + ' km off the track' : ''}]</span></li>`).join('') + '</ul>';
   const st = r.stats.stops || {};
   $('#st-controls').textContent = r.custom ? 'Imported route: no stop-sign data.' : `Controls on ${r.name} from OpenStreetMap: ${st.stop || 0} mapped stop signs, ${st.inferredStop || 0} inferred stops (minor road onto a bigger road), ${st.signal || 0} signal(s). Posted speed limits were tagged on ${r.stats.limitsTaggedPct}% of the route length; the rest use the defaults.`;
 }

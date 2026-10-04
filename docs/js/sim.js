@@ -108,20 +108,21 @@ export function defaultWaypointStops(route) {
   // Returns [{idx, d, name, kinds, minutes}] ; minutes = default regroup stop length. Editable in the UI.
   const L = route.lengthM, list = [];
   route.waypoints.forEach((w, idx) => {
-    if (w.offTrack > 300 || w.distAlong < 500 || w.distAlong > L - 500) return;
+    if (w.offTrack > 2000 || w.distAlong < 500 || w.distAlong > L - 500) return;
     if (!(w.kinds.includes('gas') || w.kinds.includes('food'))) return;
-    list.push({ idx, d: w.distAlong, name: w.name, kinds: [...w.kinds], minutes: 0 });
+    list.push({ idx, d: w.distAlong, name: w.name, kinds: [...w.kinds], minutes: 0, off: w.offTrack });
   });
   // merge entries closer than 600 m (e.g. a 'Food' pin next to a 'Gas' pin)
   const merged = [];
   for (const w of list) {
     const p = merged.at(-1);
-    if (p && w.d - p.d < 600) { p.kinds = [...new Set([...p.kinds, ...w.kinds])]; p.name += ' + ' + w.name; p.merged = true; } else merged.push({ ...w });
+    if (p && w.d - p.d < 600 && (p.off > 300) === (w.off > 300)) { p.kinds = [...new Set([...p.kinds, ...w.kinds])]; p.name += ' + ' + w.name; p.merged = true; } else merged.push({ ...w });
   }
   // rule: first stop that has food = lunch (foodMin); every other gas/food stop = short gas stop (gasMin)
   let lunchUsed = false;
   for (const w of merged) {
-    if (!lunchUsed && w.kinds.includes('food')) { w.minutes = -1; lunchUsed = true; } else w.minutes = -2;
+    if (w.off > 300) w.minutes = 0; // pin is off the track (side trip): optional, default skipped
+    else if (!lunchUsed && w.kinds.includes('food')) { w.minutes = -1; lunchUsed = true; } else w.minutes = -2;
   }
   return merged; // -1 => P.foodMin ; -2 => P.gasMin (resolved in resolveWaypointMinutes)
 }
