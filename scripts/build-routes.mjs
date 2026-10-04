@@ -36,7 +36,7 @@ for (const r of ROUTES) {
     const ele = p[3] && p[3].match(/<ele>([-\d.]+)<\/ele>/);
     return [+p[1], +p[2], ele ? +ele[1] : null];
   }));
-  // Use the longest <trkseg> only (BBH Crotched carries a 20-point, 0.1 mi stub track far from the route).
+  // Use the longest <trkseg> only (some exports carry a tiny stub track far from the real route).
   const lens = segs.map((sg) => sg.length);
   const main = segs[lens.indexOf(Math.max(...lens))];
   const dropped = segs.length - 1;
