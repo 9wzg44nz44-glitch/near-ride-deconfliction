@@ -463,13 +463,75 @@ export function answerQuestion(events, q) {
   return { hits, otherOvertakes, reverseOvertakes, related: rel, yes: hits.length > 0 };
 }
 
+
+// ------------------------------------------------------------------ flexible questions
+export const QUERY_DEFAULT = { type: 'any', terrain: 'any', a: 'any', b: 'any', from: 7 * 3600, to: 15 * 3600, sev: 'any' };
+const SEV_RANK = { low: 0, medium: 1, high: 2 };
+export function normalizeQuery(q) {
+  const d = { ...QUERY_DEFAULT, ...(q || {}) };
+  if (!['any', 'opposite', 'same', 'overtake', 'crossing'].includes(d.type)) d.type = 'any';
+  if (!['any', '0', '1', '2', 0, 1, 2].includes(d.terrain)) d.terrain = 'any';
+  if (d.terrain !== 'any') d.terrain = +d.terrain;
+  if (!['any', 'medium', 'high'].includes(d.sev)) d.sev = 'any';
+  if (!Number.isFinite(d.from)) d.from = QUERY_DEFAULT.from;
+  if (!Number.isFinite(d.to)) d.to = QUERY_DEFAULT.to;
+  return d;
+}
+// does one event (or compact Monte Carlo event) match the question?
+export function eventMatches(e, q) {
+  if (!(e.tEnd >= q.from && e.tStart <= q.to)) return false;
+  if (q.terrain !== 'any' && e.terrain !== q.terrain) return false;
+  if (q.sev !== 'any' && (SEV_RANK[e.level] ?? 0) < SEV_RANK[q.sev]) return false;
+  const t = q.type;
+  if (t === 'opposite' && e.rel !== 'opposite') return false;
+  if (t === 'same' && e.rel !== 'overtake' && e.rel !== 'follow') return false;
+  if (t === 'overtake' && e.rel !== 'overtake') return false;
+  if (t === 'crossing' && e.rel !== 'crossing') return false;
+  if (t === 'overtake') {
+    const over = e.overtaker, under = over === e.a ? e.b : e.a;
+    if (q.a !== 'any' && over !== q.a) return false;
+    if (q.b !== 'any' && under !== q.b) return false;
+    return true;
+  }
+  if (q.a !== 'any' && e.a !== q.a && e.b !== q.a) return false;
+  if (q.b !== 'any' && e.a !== q.b && e.b !== q.b) return false;
+  return true;
+}
+export function queryEvents(events, q) { q = normalizeQuery(q); return events.filter((e) => eventMatches(e, q)); }
+export function queryProbability(perRun, q) {
+  q = normalizeQuery(q);
+  if (!perRun || !perRun.length) return null;
+  const hits = perRun.filter((run) => run.some((e) => eventMatches(e, q))).length;
+  return { hits, runs: perRun.length, p: hits / perRun.length };
+}
+const TYPE_NOUN = { any: ['encounter', 'encounters'], opposite: ['head-on encounter', 'head-on encounters'], same: ['same-direction encounter', 'same-direction encounters'], overtake: ['overtake', 'overtakes'], crossing: ['crossing or merge', 'crossings or merges'] };
+export function describeQuery(q, nameOf = (x) => x, count = null) {
+  q = normalizeQuery(q);
+  const noun = TYPE_NOUN[q.type][count === 1 ? 0 : 1];
+  const A = q.a === 'any' ? null : nameOf(q.a), B = q.b === 'any' ? null : nameOf(q.b);
+  let who = '';
+  if (q.type === 'overtake') who = A || B ? ` (${A || 'any group'} overtaking ${B || 'any group'})` : '';
+  else if (A && B) who = ` between ${A} and ${B}`;
+  else if (A || B) who = ` involving ${A || B}`;
+  const terr = q.terrain === 'any' ? '' : ` on ${CLS_NAMES[q.terrain]}`;
+  const sev = q.sev === 'any' ? '' : ` of ${q.sev} or higher severity`;
+  return `${noun}${who}${terr}${sev} between ${fmtClock(q.from)} and ${fmtClock(q.to)}`;
+}
+export function answerQuery(events, q, nameOf = (x) => x) {
+  q = normalizeQuery(q);
+  const hits = queryEvents(events, q);
+  const text = hits.length ? `Yes: the model has ${hits.length} ${describeQuery(q, nameOf, hits.length)}.` : `No: the model has no ${describeQuery(q, nameOf, 0)}.`;
+  return { q, hits, yes: hits.length > 0, text };
+}
+
 // ------------------------------------------------------------------ Monte Carlo forecast
 export function monteCarlo(ctx, scenario, runs = 60, seed = 12345, onProgress = null) {
   const nominal = runScenario(ctx, scenario).events;
-  const all = [];
+  const all = [], perRun = [];
   for (let r = 0; r < runs; r++) {
     const ev = runScenario(ctx, scenario, seed + r * 7919).events;
     ev.forEach((e) => all.push({ ...e, run: r }));
+    perRun.push(ev.map((e) => ({ a: e.a, b: e.b, rel: e.rel, terrain: e.terrain, tStart: e.tStart, tEnd: e.tEnd, level: e.level, overtaker: e.overtaker })));
     if (onProgress && r % 5 === 0) onProgress((r + 1) / runs);
   }
   // cluster by pair + location bin (3 km, or 8 km for overtakes whose place moves with speed, along group A's route) ; nominal events seed the clusters
@@ -499,7 +561,7 @@ export function monteCarlo(ctx, scenario, runs = 60, seed = 12345, onProgress = 
       medianDur: c.members.length ? pct(c.members.map((m) => m.duration), 0.5) : rep.duration,
     };
   }).filter((c) => c.prob >= 0.1 || c.nominal).sort((x, y) => x.tP50 - y.tP50);
-  return { runs, clusters: res, nominalCount: nominal.length };
+  return { runs, clusters: res, nominalCount: nominal.length, perRun };
 }
 
 // ------------------------------------------------------------------ start-time optimiser

@@ -178,3 +178,59 @@ test('reality check: timing delta, implied shift and direction flag', () => {
   const offr = calibrateObservation(sims, ctx.byId, { routeId: 'c', mile: 5, groupId: 'zzz', t: null }, S.projectLatLon);
   assert.ok(offr.error);
 });
+
+test('flexible questions: type, terrain, group, window and severity filters', () => {
+  const ev = (o) => ({ a: 'x', b: 'y', aName: 'X', bName: 'Y', rel: 'follow', terrain: 0, tStart: 9 * 3600, tEnd: 9 * 3600 + 60, level: 'low', ...o });
+  const events = [
+    ev({ rel: 'opposite', terrain: 1, tStart: 8 * 3600, tEnd: 8 * 3600 + 30, level: 'high' }),
+    ev({ rel: 'overtake', overtaker: 'x', terrain: 2, tStart: 10.5 * 3600, tEnd: 10.5 * 3600 + 120, level: 'medium' }),
+    ev({ rel: 'overtake', overtaker: 'y', terrain: 0, tStart: 12 * 3600, tEnd: 12 * 3600 + 60 }),
+    ev({ rel: 'crossing', a: 'x', b: 'z', terrain: 0, tStart: 13 * 3600, tEnd: 13 * 3600 + 20, level: 'medium' }),
+  ];
+  const n = (q) => S.queryEvents(events, q).length;
+  assert.equal(n({}), 4);
+  assert.equal(n({ type: 'opposite' }), 1);
+  assert.equal(n({ type: 'same' }), 2);
+  assert.equal(n({ type: 'crossing' }), 1);
+  assert.equal(n({ terrain: 2 }), 1);
+  assert.equal(n({ terrain: 'any', sev: 'medium' }), 3);
+  assert.equal(n({ sev: 'high' }), 1);
+  assert.equal(n({ a: 'z' }), 1);
+  assert.equal(n({ a: 'x', b: 'y' }), 3);
+  // overtake is directional: A overtakes B
+  assert.equal(n({ type: 'overtake', a: 'x', b: 'y' }), 1);
+  assert.equal(n({ type: 'overtake', a: 'y', b: 'x' }), 1);
+  assert.equal(n({ type: 'overtake', a: 'z' }), 0);
+  // window uses overlap
+  assert.equal(n({ from: 10 * 3600, to: 11 * 3600 }), 1);
+  assert.equal(n({ from: 8 * 3600 + 20, to: 8 * 3600 + 25 }), 1);
+  assert.equal(n({ from: 14 * 3600 }), 0);
+  const yes = S.answerQuery(events, { type: 'opposite' }, (id) => id.toUpperCase());
+  assert.ok(yes.yes && /^Yes: the model has 1 head-on encounter between/.test(yes.text), yes.text);
+  const no = S.answerQuery(events, { type: 'opposite', terrain: 2 }, (id) => id);
+  assert.ok(!no.yes && /^No: the model has no head-on encounters on Class VI between 7:00 AM and 3:00 PM\.$/.test(no.text), no.text);
+  // normalisation of URL/saved values
+  assert.equal(S.normalizeQuery({ terrain: '2', type: 'bogus', sev: 'x' }).terrain, 2);
+  assert.equal(S.normalizeQuery({ type: 'bogus' }).type, 'any');
+  // Monte Carlo probability from per-run events
+  const perRun = [[events[0]], [], [events[0], events[1]], []];
+  assert.deepEqual(S.queryProbability(perRun, { type: 'opposite' }), { hits: 2, runs: 4, p: 0.5 });
+  assert.equal(S.queryProbability(perRun, { type: 'overtake' }).hits, 1);
+  assert.equal(S.queryProbability(null, {}), null);
+});
+
+test('flexible questions on the real default scenario + Monte Carlo per-run data', () => {
+  const d = JSON.parse(fs.readFileSync(new URL('../docs/data/routes.json', import.meta.url), 'utf8'));
+  const ctx = S.makeContext(d.routes);
+  const sc = { groups: [grp('sbh', 'sbh', 18, 9 * 3600), grp('mbh', 'mbh', 7, 9.5 * 3600)] };
+  const { events } = S.runScenario(ctx, sc);
+  assert.equal(S.queryEvents(events, {}).length, events.length);
+  assert.equal(S.answerQuery(events, { type: 'opposite' }).yes, false);
+  assert.equal(S.answerQuery(events, { type: 'overtake', terrain: 2, a: 'sbh', b: 'mbh', from: 10 * 3600, to: 11 * 3600 }).yes, false);
+  assert.equal(S.answerQuery(events, { to: 10 * 3600 + 35 * 60 }).yes, false);
+  const mc = S.monteCarlo(ctx, sc, 6, 1);
+  assert.equal(mc.perRun.length, 6);
+  const p = S.queryProbability(mc.perRun, {});
+  assert.equal(p.runs, 6); assert.ok(p.p >= 0 && p.p <= 1);
+  JSON.stringify(mc.perRun); // must be cloneable for the worker
+});

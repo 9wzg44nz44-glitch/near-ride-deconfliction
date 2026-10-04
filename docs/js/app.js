@@ -38,7 +38,7 @@ const TOGGLES = [
 // ---------------------------------------------------------------- state
 const state = {
   routes: [], ctx: null, rows: {}, obs: { on: false, routeId: 'sbh', t0: 9 * 3600 + 45 * 60, reverse: false, skill: 'intermediate' },
-  params: {}, overrides: {}, wptMinutes: {}, res: 60, custom: [], calib: [],
+  params: {}, overrides: {}, wptMinutes: {}, res: 60, custom: [], calib: [], q: { ...S.QUERY_DEFAULT },
   sims: [], events: [], P: S.DEFAULT_PARAMS, t: 9 * 3600, playing: false, pausedEv: null, forecast: null, tMin: T_MIN, tMax: 18 * 3600,
 };
 const timeStr = (s, withSec) => { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60; return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}${withSec || ss ? ':' + String(ss).padStart(2, '0') : ''}`; };
@@ -53,17 +53,17 @@ function defaultRows() {
 }
 function saveState() {
   try {
-    localStorage.setItem('near.state.v1', JSON.stringify({ rows: state.rows, obs: state.obs, params: state.params, overrides: state.overrides, wptMinutes: state.wptMinutes, res: state.res, calib: state.calib }));
+    localStorage.setItem('near.state.v1', JSON.stringify({ rows: state.rows, obs: state.obs, params: state.params, overrides: state.overrides, wptMinutes: state.wptMinutes, res: state.res, calib: state.calib, q: state.q }));
     const diff = {}; for (const k of Object.keys(state.params)) if (state.params[k] !== S.DEFAULT_PARAMS[k]) diff[k] = state.params[k];
     const rows = {}; for (const [id, r] of Object.entries(state.rows)) rows[id] = [r.n, r.t0, r.skill === 'fast' ? 1 : 0, r.reverse ? 1 : 0, r.pace || 100, r.delays || []];
-    const hash = btoa(unescape(encodeURIComponent(JSON.stringify({ r: rows, o: state.obs.on ? state.obs : 0, p: diff }))));
+    const hash = btoa(unescape(encodeURIComponent(JSON.stringify({ r: rows, o: state.obs.on ? state.obs : 0, p: diff, q: state.q }))));
     history.replaceState(null, '', '#s=' + hash);
   } catch (e) { /* storage may be unavailable */ }
 }
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem('near.state.v1') || 'null');
-    if (saved) { Object.assign(state, { obs: { ...state.obs, ...saved.obs }, params: saved.params || {}, overrides: saved.overrides || {}, wptMinutes: saved.wptMinutes || {}, res: saved.res || 60, calib: saved.calib || [] }); for (const [id, r] of Object.entries(saved.rows || {})) if (state.rows[id]) Object.assign(state.rows[id], r); }
+    if (saved) { Object.assign(state, { obs: { ...state.obs, ...saved.obs }, params: saved.params || {}, overrides: saved.overrides || {}, wptMinutes: saved.wptMinutes || {}, res: saved.res || 60, calib: saved.calib || [], q: S.normalizeQuery(saved.q) }); for (const [id, r] of Object.entries(saved.rows || {})) if (state.rows[id]) Object.assign(state.rows[id], r); }
   } catch (e) {}
   try {
     const m = location.hash.match(/^#s=(.+)$/);
@@ -72,6 +72,7 @@ function loadState() {
       for (const [id, a] of Object.entries(h.r || {})) if (state.rows[id]) state.rows[id] = { n: a[0], t0: a[1], skill: a[2] ? 'fast' : 'intermediate', reverse: !!a[3], pace: a[4] || 100, delays: a[5] || [] };
       if (h.o) state.obs = { ...state.obs, ...h.o, on: true };
       if (h.p) state.params = { ...state.params, ...h.p };
+      if (h.q) state.q = S.normalizeQuery(h.q);
     }
   } catch (e) {}
 }
@@ -400,30 +401,43 @@ function nextEncounter() {
   setSimStatus(`Jumped to 1 minute before the encounter at ${S.fmtClock(ev.tStart)}. Press Run.`);
 }
 
+const Q_PRESETS = {
+  any: { ...S.QUERY_DEFAULT },
+  headon: { ...S.QUERY_DEFAULT, type: 'opposite' },
+  cvi: { ...S.QUERY_DEFAULT, terrain: 2 },
+  early: { ...S.QUERY_DEFAULT, to: 10 * 3600 + 35 * 60 },
+  'sbh-over': { ...S.QUERY_DEFAULT, type: 'overtake', terrain: 2, a: 'sbh', b: 'mbh', from: 10 * 3600, to: 11 * 3600 },
+};
+function writeQueryControls() {
+  const q = state.q;
+  $('#q-type').value = q.type; $('#q-t').value = String(q.terrain); $('#q-x').value = q.a; $('#q-y').value = q.b;
+  $('#q-from').value = timeStr(q.from); $('#q-to').value = timeStr(q.to); $('#q-sev').value = q.sev;
+}
+function readQueryControls() {
+  state.q = S.normalizeQuery({ type: $('#q-type').value, terrain: $('#q-t').value, a: $('#q-x').value, b: $('#q-y').value, from: parseTime($('#q-from').value), to: parseTime($('#q-to').value), sev: $('#q-sev').value });
+  saveState();
+}
 function renderQuestion() {
   const gs = state.sims.map((s) => s.grp);
-  const fill = (sel, def) => { const cur = sel.value; sel.innerHTML = gs.map((g) => `<option value="${g.id}">${esc(g.name)}</option>`).join(''); sel.value = gs.some((g) => g.id === cur) ? cur : def; };
-  const qx = $('#q-x'), qy = $('#q-y');
-  fill(qx, gs.find((g) => g.id === 'sbh')?.id ?? gs[0]?.id); fill(qy, gs.find((g) => g.id === 'mbh')?.id ?? gs[1]?.id ?? gs[0]?.id);
+  const fill = (sel, cur) => { sel.innerHTML = '<option value="any">any group</option>' + gs.map((g) => `<option value="${g.id}">${esc(g.name)}</option>`).join(''); sel.value = gs.some((g) => g.id === cur) ? cur : 'any'; };
+  fill($('#q-x'), state.q.a); fill($('#q-y'), state.q.b);
+  state.q.a = $('#q-x').value; state.q.b = $('#q-y').value;
+  writeQueryControls();
   computeQuestion();
 }
 function computeQuestion() {
-  const x = $('#q-x').value, y = $('#q-y').value, terr = +$('#q-t').value, from = parseTime($('#q-from').value), to = parseTime($('#q-to').value);
-  const ans = $('#q-answer'), det = $('#q-detail');
-  if (state.sims.length < 2 || !x || !y || x === y) { ans.textContent = 'Pick two different groups that both have riders.'; det.textContent = ''; return; }
+  const ans = $('#q-answer'), det = $('#q-detail'), list = $('#q-list'), prob = $('#q-prob');
+  if (state.sims.length < 2) { ans.textContent = 'Select at least two groups with riders to ask a question.'; list.innerHTML = ''; prob.textContent = ''; det.textContent = ''; return; }
+  const q = state.q;
   const nameOf = (id) => state.sims.find((s) => s.grp.id === id)?.grp.name || id;
-  const q = S.answerQuestion(state.events, { x, y, terrain: terr, from, to });
-  const win = `${S.fmtClock(from)} and ${S.fmtClock(to)}`;
-  if (q.yes) {
-    const e = q.hits[0];
-    ans.innerHTML = `<span class="yes">Model says YES:</span> ${esc(nameOf(x))} overtakes ${esc(nameOf(y))} on ${S.CLS_NAMES[terr]} between ${win}${q.hits.length > 1 ? ` (${q.hits.length} times)` : ''}. First at ${S.fmtClock(e.tStart)} for ${S.fmtDur(e.duration)}, ${esc(whereText(e))}.`;
-  } else {
-    ans.innerHTML = `<span class="no">Model says NO:</span> no ${esc(nameOf(x))} overtake of ${esc(nameOf(y))} on ${S.CLS_NAMES[terr]} between ${win}.`;
-  }
-  const lines = [];
-  for (const e of q.related) lines.push(`${S.fmtClock(e.tStart)} to ${S.fmtClock(e.tEnd)}: ${relText(e)}, ${S.CLS_NAMES[e.terrain]}, ${whereText(e)}`);
-  const none = `No encounter of any kind between these two groups touches that window.`;
-  det.innerHTML = `<strong>What the model shows in that window for these two groups:</strong> ${lines.length ? '<ul>' + lines.map((l) => `<li>${esc(l)}</li>`).join('') + '</ul>' : none} <br>Assumptions: single deterministic run, ${state.P.threshold} m threshold, speeds ${state.P.cviInt}/${state.P.cviFast} mph on Class VI (intermediate/fast), limit +${state.P.bonusMph} mph on maintained roads, OSM terrain with your edits. Real groups vary, so see the Leader briefing tab for probabilities.`;
+  const r = S.answerQuery(state.events, q, nameOf);
+  ans.innerHTML = `<span class="${r.yes ? 'yes' : 'no'}">${r.yes ? 'Yes' : 'No'}:</span> ${esc(r.text.replace(/^(Yes|No): /, ''))}`;
+  const shown = r.hits.slice(0, 12);
+  list.innerHTML = shown.map((e) => `<li><button type="button" class="linkbtn" data-ev="${state.events.indexOf(e)}">${esc(S.fmtClock(e.tStart))} to ${esc(S.fmtClock(e.tEnd))}: ${esc(relText(e))}, ${esc(S.CLS_NAMES[e.terrain])}, ${esc(e.level)} severity, ${esc(whereText(e))}</button></li>`).join('') + (r.hits.length > shown.length ? `<li class="muted">and ${r.hits.length - shown.length} more (see the Encounters tab)</li>` : '');
+  const p = state.forecast?.perRun ? S.queryProbability(state.forecast.perRun, q) : null;
+  if (p) prob.innerHTML = `<strong>Monte Carlo (${p.runs} runs with speed and stop variation):</strong> at least one such event in ${Math.round(p.p * 100)}% of runs (${p.hits} of ${p.runs}). <button type="button" class="btn small" id="q-mc">Re-run</button>`;
+  else prob.innerHTML = `<button type="button" class="btn small" id="q-mc">Estimate probability (Monte Carlo)</button> <span class="muted">Runs the scenario many times with random speed and stop variation.</span>`;
+  det.textContent = `Click an event to jump the map to it. Assumptions: single deterministic run, ${state.P.threshold} m threshold, OSM terrain with your edits. An event counts if it overlaps the time window. For "overtake only", group A is the overtaker and B is passed.`;
 }
 
 // ---------------------------------------------------------------- worker jobs
@@ -537,7 +551,7 @@ async function runForecast() {
   const runs = +$('#mc-runs').value; $('#mc-btn').disabled = true; $('#mc-prog').hidden = false; const bar = $('#mc-prog > div'); bar.style.width = '0'; $('#mc-status').textContent = 'Running...';
   try {
     const r = await job('mc', { scenario: sc, runs, seed: 12345 }, (p) => { bar.style.width = Math.round(p * 100) + '%'; });
-    state.forecast = r; $('#mc-status').textContent = `${runs} runs complete.`; renderForecast(); renderBriefingText();
+    state.forecast = r; $('#mc-status').textContent = `${runs} runs complete.`; renderForecast(); renderBriefingText(); computeQuestion();
   } catch (e) { $('#mc-status').textContent = 'Forecast failed: ' + e.message; }
   $('#mc-prog').hidden = true; $('#mc-btn').disabled = false;
 }
@@ -775,11 +789,15 @@ async function init() {
   $('#rows').addEventListener('change', onRowChange); $('#rows').addEventListener('input', (e) => { if (e.target.type === 'number') onRowChange(e); });
   $('#res').addEventListener('change', (e) => { state.res = +e.target.value; renderRows(); saveState(); });
   $('#reset-btn').addEventListener('click', () => { state.rows = defaultRows(); state.obs = { on: false, routeId: 'sbh', t0: 9 * 3600 + 45 * 60, reverse: false, skill: 'intermediate' }; state.calib = []; renderRows(); scheduleRun('reset to default'); });
-  for (const id of ['#q-x', '#q-y', '#q-t', '#q-from', '#q-to']) $(id).addEventListener('change', computeQuestion);
+  for (const id of ['#q-type', '#q-x', '#q-y', '#q-t', '#q-from', '#q-to', '#q-sev']) $(id).addEventListener('change', () => { readQueryControls(); computeQuestion(); });
+  $$('.q-presets [data-preset]').forEach((b) => b.addEventListener('click', () => { state.q = S.normalizeQuery({ ...Q_PRESETS[b.dataset.preset] }); if (state.q.a !== 'any' && !state.sims.some((x) => x.grp.id === state.q.a)) state.q.a = 'any'; if (state.q.b !== 'any' && !state.sims.some((x) => x.grp.id === state.q.b)) state.q.b = 'any'; saveState(); writeQueryControls(); computeQuestion(); }));
+  $('#q-list').addEventListener('click', (e) => { const b = e.target.closest('[data-ev]'); if (b) jumpToEvent(+b.dataset.ev); });
+  $('#q-prob').addEventListener('click', async (e) => { if (!e.target.closest('#q-mc')) return; e.target.disabled = true; e.target.textContent = 'Running...'; await runForecast(); });
   $('#play-btn').addEventListener('click', () => setPlaying(!state.playing));
   $('#restart-btn').addEventListener('click', restart); $('#next-btn').addEventListener('click', nextEncounter);
   $('#banner-continue').addEventListener('click', () => setPlaying(true));
-  $('#speed').addEventListener('change', () => { if (state.playing) setSimStatus('Running at ' + $('#speed').value + 'x.'); });
+  try { const sp = localStorage.getItem('near.speed'); if (sp && [...$('#speed').options].some((o) => o.value === sp)) $('#speed').value = sp; else $('#speed').value = '300'; } catch (e) {}
+  $('#speed').addEventListener('change', () => { try { localStorage.setItem('near.speed', $('#speed').value); } catch (e) {} if (state.playing) setSimStatus('Running at ' + $('#speed').value + 'x.'); });
   $('#minsev').addEventListener('change', () => { try { localStorage.setItem('near.minsev', $('#minsev').value); } catch (e) {} });
   $('#autopause').addEventListener('change', () => { try { localStorage.setItem('near.autopause', $('#autopause').checked ? '1' : '0'); } catch (e) {} });
   try { if (localStorage.getItem('near.autopause') === '0') $('#autopause').checked = false; const ms = localStorage.getItem('near.minsev'); if (ms) $('#minsev').value = ms; } catch (e) {}

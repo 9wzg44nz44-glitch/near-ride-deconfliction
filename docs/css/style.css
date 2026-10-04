@@ -177,3 +177,9 @@ details.disclaimer p{margin:.4rem 0 0}
   .transport .ticks{height:10px}
 }
 @media (max-width:640px){.banner{font-size:.8rem;padding:6px 10px;max-width:calc(100% - 20px);max-height:70%;overflow:auto}}
+
+.q-presets{display:flex;flex-wrap:wrap;gap:6px;margin:.2rem 0 .4rem}
+.q-list{margin:.2rem 0 .4rem;padding-left:1.2rem}
+.q-list li{margin:2px 0;font-size:.9rem}
+.linkbtn{background:none;border:0;padding:3px 0;color:var(--link);text-decoration:underline;cursor:pointer;text-align:left;font:inherit;min-height:32px}
+@media (max-width:640px){.q-presets .btn{font-size:.8rem}}

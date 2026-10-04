@@ -21,7 +21,7 @@
 
   <section class="howto" id="howto" aria-label="How to use" hidden>
     <ol>
-      <li><b>1</b> Set riders and departure times (Scenario, below the map).</li>
+      <li><b>1</b> Set riders and departure times (Scenario, just below).</li>
       <li><b>2</b> Press <b>Run</b> to animate the day.</li>
       <li><b>3</b> Watch for pauses at encounters; press <b>Continue</b> to go on.</li>
     </ol>
@@ -29,11 +29,24 @@
     <button type="button" class="btn small" id="howto-x" aria-label="Dismiss the how-to strip">Got it</button>
   </section>
 
+  <section class="panel" id="scenario" aria-labelledby="sc-h">
+    <h2 id="sc-h">Scenario: riders and departure times</h2>
+    <p class="small muted">Set riders per route (0 = not riding) and departure times in local Eastern clock time, 7:00 AM to 3:00 PM. Defaults: SBH Monadnock 18 riders at 9:00 AM, MBH Monadnock 7 riders at 9:30 AM. Any change recalculates the simulation and returns the clock to the start; then press Run below.</p>
+    <div class="tablewrap"><table id="rows"><caption class="small muted" style="text-align:left">Ride groups</caption>
+      <thead><tr><th scope="col">Route</th><th scope="col">Riders</th><th scope="col">Departs (ET)</th><th scope="col">Skill</th><th scope="col">Direction</th><th scope="col" title="Percent of modeled speed; use below 100 for a slower group">Pace %</th></tr></thead>
+      <tbody></tbody></table></div>
+    <div class="q-ctl">
+      <label>Time resolution <select id="res"><option value="60">1 minute</option><option value="15">15 seconds</option></select></label>
+      <button class="btn" type="button" id="reset-btn">Reset to default scenario</button>
+      <span class="small muted" id="status" role="status"></span>
+    </div>
+  </section>
+
   <div class="transport" id="transport" role="group" aria-label="Playback controls">
     <div class="tr-row">
       <button class="btn run-btn" type="button" id="play-btn" aria-pressed="false"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path id="play-ico" d="M7 4.5v15l13-7.5z" fill="currentColor"/></svg><span id="play-lbl">Run</span></button>
       <button class="btn" type="button" id="restart-btn" title="Back to the earliest departure time"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.6-5.9M4 4v5h5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Restart</button>
-      <label class="tr-speed">Speed <select id="speed"><option value="1">1x</option><option value="10">10x</option><option value="60" selected>60x</option><option value="300">300x</option></select></label>
+      <label class="tr-speed">Speed <select id="speed"><option value="1">1x</option><option value="10">10x</option><option value="60">60x</option><option value="300" selected>300x</option></select></label>
       <span class="clock" id="clock" aria-label="Simulated clock, Eastern time">9:00:00 AM</span><span class="small muted tz">ET</span>
     </div>
     <div class="tr-slider"><input type="range" id="slider" min="25200" max="64800" step="5" value="32400" aria-label="Time of day"></div>
@@ -68,29 +81,30 @@
     </div>
   </section>
 
-  <section class="panel" id="scenario" aria-labelledby="sc-h">
-    <h2 id="sc-h">Scenario: riders and departure times</h2>
-    <p class="small muted">Set riders per route (0 = not riding) and departure times in local Eastern clock time, 7:00 AM to 3:00 PM. Defaults: SBH Monadnock 18 riders at 9:00 AM, MBH Monadnock 7 riders at 9:30 AM. Any change recalculates the simulation and returns the clock to the start; then press Run above.</p>
-    <div class="tablewrap"><table id="rows"><caption class="small muted" style="text-align:left">Ride groups</caption>
-      <thead><tr><th scope="col">Route</th><th scope="col">Riders</th><th scope="col">Departs (ET)</th><th scope="col">Skill</th><th scope="col">Direction</th><th scope="col" title="Percent of modeled speed; use below 100 for a slower group">Pace %</th></tr></thead>
-      <tbody></tbody></table></div>
-    <div class="q-ctl">
-      <label>Time resolution <select id="res"><option value="60">1 minute</option><option value="15">15 seconds</option></select></label>
-      <button class="btn" type="button" id="reset-btn">Reset to default scenario</button>
-      <span class="small muted" id="status" role="status"></span>
-    </div>
-  </section>
 
   <section class="q-card" id="qcard" aria-labelledby="q-h">
-    <h2 id="q-h">Question: is one group overtaking another on a given terrain?</h2>
+    <h2 id="q-h">Question: will the groups meet, and where?</h2>
+    <div class="q-presets" role="group" aria-label="Preset questions">
+      <button type="button" class="btn small" data-preset="any">Any encounter at all?</button>
+      <button type="button" class="btn small" data-preset="headon">Are there any head-on encounters?</button>
+      <button type="button" class="btn small" data-preset="cvi">Any encounters on Class VI?</button>
+      <button type="button" class="btn small" data-preset="early">Any encounters before 10:35 AM?</button>
+      <button type="button" class="btn small" data-preset="sbh-over">Is SBH overtaking MBH on Class VI, 10 to 11 AM?</button>
+    </div>
     <div class="q-ctl">
-      <label>Is <select id="q-x"></select></label>
-      <label>overtaking <select id="q-y"></select></label>
-      <label>on <select id="q-t"><option value="2" selected>Class VI</option><option value="1">maintained dirt</option><option value="0">paved</option></select></label>
-      <label>between <input type="time" id="q-from" value="10:00" step="60"></label>
-      <label>and <input type="time" id="q-to" value="11:00" step="60"></label>
+      <label>Event type <select id="q-type"><option value="any">any</option><option value="opposite">head-on (opposite direction)</option><option value="same">same direction (overtake or catch-up)</option><option value="overtake">overtake only (A passes B)</option><option value="crossing">crossing or merge</option></select></label>
+      <label>Terrain <select id="q-t"><option value="any">any</option><option value="0">paved</option><option value="1">maintained dirt</option><option value="2">Class VI</option></select></label>
+      <label>Group A <select id="q-x"></select></label>
+      <label>Group B <select id="q-y"></select></label>
+    </div>
+    <div class="q-ctl">
+      <label>Between <input type="time" id="q-from" value="07:00" step="60"></label>
+      <label>and <input type="time" id="q-to" value="15:00" step="60"></label>
+      <label>Minimum severity <select id="q-sev"><option value="any">any</option><option value="medium">medium and up</option><option value="high">high only</option></select></label>
     </div>
     <div class="answer" id="q-answer" aria-live="polite">Running the model...</div>
+    <ol class="q-list" id="q-list"></ol>
+    <div class="small" id="q-prob"></div>
     <div class="small muted" id="q-detail"></div>
   </section>
 

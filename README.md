@@ -16,14 +16,14 @@ Created by Dan Britton with Grok Bot (AI assistant). Contact: BrittonSolutions@i
 - Terrain per route stretch (paved, maintained dirt, Class VI) from OpenStreetMap, with confidence levels and an in-browser **terrain editor** (edits stored in localStorage, exportable and importable as JSON).
 - Speed model from the riders' own figures: Class VI 16 mph (intermediate) or 23.5 mph (fast); posted limit +7.5 mph (adjustable 5 to 10) on maintained roads; stop signs obeyed; accelerations, braking, cornering limits; column spacing by time gap (2 s, 4.5 s on Class VI); regroup stops at gas/food waypoints.
 - Encounter detection by map distance (default 30 m, adjustable 15 to 100 m), classified as same direction (overtaking or catching up), opposite direction, or crossing/merge, with terrain, duration, riders involved and severity.
-- Animated Leaflet map with time slider, play/pause, 1x/10x/60x/300x/900x speed, Eastern clock, flashing ring and banner at encounters, optional beep, timeline ticks.
+- Animated Leaflet map with time slider, play/pause, 1x/10x/60x/300x speed (default 300x), Eastern clock, flashing ring and banner at encounters, optional beep, timeline ticks.
 - **Start-time optimizer** (top 3 schedules with before/after counts), **Monte Carlo leader briefing** (probability and time window per encounter, Markdown copy and print).
-- **Question card**: "Is SBH overtaking MBH on a Class VI section between 10 and 11 AM?" answered from the model.
+- **Question card**: pick event type (any, head-on, same direction, overtake only, crossing or merge), terrain, group A and B, a time window (default 7 AM to 3 PM) and minimum severity, or use a preset ("Are there any head-on encounters?", "Any encounters on Class VI?", "Any encounters before 10:35 AM?", "Is SBH overtaking MBH on Class VI, 10 to 11 AM?"). The answer is plain language with a clickable list of matching events (jumps the map to each) and an optional Monte Carlo probability. The selection is saved in the share link.
 - Client-side **GPX import** for extra routes.
 
 ## Using the simulator
 
-Set riders and departure times (below the map), press **Run** in the transport bar above the map, and watch for the automatic pause at each encounter (**Continue** or Run carries on). Controls: Run/Pause, Restart, speed 1x/10x/60x/300x, Eastern clock, time slider, "Pause automatically at each encounter" with a minimum severity filter, and "Next encounter". Every input change recalculates automatically and reports "Simulation updated: N encounters found". The map legend is collapsible (collapsed by default on narrow screens) and stays inside the map.
+Set riders and departure times (above the map), press **Run** in the transport bar just above the map, and watch for the automatic pause at each encounter (**Continue** or Run carries on). Controls: Run/Pause, Restart, speed 1x/10x/60x/300x (default 300x), Eastern clock, time slider, "Pause automatically at each encounter" with a minimum severity filter, and "Next encounter". Every input change recalculates automatically and reports "Simulation updated: N encounters found". The map legend is collapsible (collapsed by default on narrow screens) and stays inside the map.
 
 ## Run it
 
