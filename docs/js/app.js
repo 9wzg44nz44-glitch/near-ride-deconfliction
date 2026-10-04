@@ -39,7 +39,7 @@ const TOGGLES = [
 const state = {
   routes: [], ctx: null, rows: {}, obs: { on: false, routeId: 'sbh', t0: 9 * 3600 + 45 * 60, reverse: false, skill: 'intermediate' },
   params: {}, overrides: {}, wptMinutes: {}, res: 60, custom: [], calib: [],
-  sims: [], events: [], P: S.DEFAULT_PARAMS, t: 9 * 3600, playing: false, forecast: null, tMin: T_MIN, tMax: 18 * 3600,
+  sims: [], events: [], P: S.DEFAULT_PARAMS, t: 9 * 3600, playing: false, pausedEv: null, forecast: null, tMin: T_MIN, tMax: 18 * 3600,
 };
 const timeStr = (s, withSec) => { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60; return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}${withSec || ss ? ':' + String(ss).padStart(2, '0') : ''}`; };
 const parseTime = (v) => { if (!v) return null; const p = v.split(':').map(Number); return p[0] * 3600 + (p[1] || 0) * 60 + (p[2] || 0); };
@@ -136,12 +136,13 @@ function onRowChange(e) {
     tr.classList.toggle('row-off', !(row.n > 0));
   }
   if (f === 't0' && el.value) { const v = clamp(parseTime(el.value), T_MIN, T_MAX); el.value = timeStr(v, state.res < 60); }
-  scheduleRun();
+  scheduleRun({ n: 'rider count', t0: 'departure time', pace: 'pace', skill: 'skill', reverse: 'direction', on: 'observer' }[f] || 'group setting');
 }
 
 // ---------------------------------------------------------------- run
 let runTimer = null;
-function scheduleRun() { clearTimeout(runTimer); runTimer = setTimeout(runNow, 120); saveState(); }
+let pendingReason = null;
+function scheduleRun(reason) { pendingReason = reason || pendingReason; clearTimeout(runTimer); runTimer = setTimeout(runNow, 120); saveState(); }
 function runNow() {
   const sc = buildScenario();
   const t0 = performance.now();
@@ -154,8 +155,11 @@ function runNow() {
   }
   $('#status').textContent = `Simulated ${state.sims.length} group${state.sims.length === 1 ? '' : 's'} in ${ms} ms.`;
   const sl = $('#slider'); sl.min = state.tMin; sl.max = state.tMax;
-  state.t = clamp(state.t, state.tMin, state.tMax);
+  setPlaying(false); state.pausedEv = null;
+  state.t = state.sims.length ? clamp(Math.min(...state.sims.map((x) => x.t0)), state.tMin, state.tMax) : state.tMin;
   renderAfterRun();
+  const n = state.events.length, why = pendingReason; pendingReason = null;
+  setSimStatus(state.sims.length < 2 ? 'Simulation updated: select at least two groups to find encounters.' : `Simulation updated: ${n} encounter${n === 1 ? '' : 's'} found${why ? ' after changing ' + why : ''}. Clock reset to ${S.fmtClock(state.t)}. Press Run.`, !!why);
 }
 function renderAfterRun() {
   drawRoutes(); drawEvents(); rebuildDots(); renderLegend(); renderEventsTable(); renderTicks(); renderQuestion(); renderOptLocks(); renderBriefingText(); renderForecast(); updateFrame(true); renderTerrainSummary(); renderCalib(); drawMileMarkers();
@@ -212,8 +216,9 @@ function drawRoutes() {
   drawSelection();
 }
 function renderLegend() {
+  $('#groupkey').innerHTML = state.sims.map((s) => `<span class="gk"><span class="swatch" style="background:${s.grp.color || '#888'}"></span>${esc(s.grp.name)}, ${s.N} rider${s.N === 1 ? '' : 's'}, leaves ${S.fmtClock(s.t0)}</span>`).join('');
   const gl = state.sims.map((s) => `<div><span class="swatch" style="background:${s.grp.color || '#888'}"></span>${esc(s.grp.name)} (${s.N})</div>`).join('');
-  $('#legend').innerHTML = `<div><i style="border-color:${TERR_COL[0]}"></i>paved</div><div><i style="border-color:${TERR_COL[1]}"></i>maintained dirt</div><div><i class="cvi" style="border-color:${TERR_COL[2]}"></i>Class VI</div>${gl}<div>Ring = encounter (color = terrain)</div><div>Dots: <span style="color:#e65100">gas</span> <span style="color:#2e7d32">food</span> <span style="color:#d50000">hazard</span> <span style="color:#6a1b9a">gate</span></div>`;
+  $('#legend-body').innerHTML = `<div><i style="border-color:${TERR_COL[0]}"></i>paved</div><div><i style="border-color:${TERR_COL[1]}"></i>maintained dirt</div><div><i class="cvi" style="border-color:${TERR_COL[2]}"></i>Class VI</div>${gl}<div>Ring = encounter (color = terrain)</div><div>Dots: <span style="color:#e65100">gas</span> <span style="color:#2e7d32">food</span> <span style="color:#d50000">hazard</span> <span style="color:#6a1b9a">gate</span></div>`;
 }
 let dotSets = [];
 function rebuildDots() {
@@ -305,6 +310,7 @@ function beep() {
 
 // ---------------------------------------------------------------- frame
 function setTime(t, keepPlaying = true) {
+  state.pausedEv = null;
   state.t = clamp(Math.round(t), state.tMin, state.tMax);
   if (!keepPlaying) setPlaying(false);
   updateFrame();
@@ -330,27 +336,70 @@ function updateFrame(force) {
   if (act.length) {
     const top = act.map((i) => state.events[i]).sort((x, y) => y.score - x.score)[0];
     b.className = 'banner on sev-' + top.level;
-    b.textContent = `ENCOUNTER: ${relText(top)}, ${S.CLS_NAMES[top.terrain]}, ${S.fmtClock(top.tStart)}` + (act.length > 1 ? ` (+${act.length - 1} more now)` : '');
-  } else b.className = 'banner';
+    const paused = state.pausedEv != null && act.includes(state.pausedEv);
+    $('#banner-text').textContent = (paused ? 'PAUSED. ' : '') + `ENCOUNTER: ${relText(top)}, ${S.CLS_NAMES[top.terrain]}, ${S.fmtClock(top.tStart)}` + (paused ? `, ${whereText(top)}` : '') + (act.length > 1 ? ` (+${act.length - 1} more now)` : '');
+    $('#banner-continue').hidden = !paused;
+  } else { b.className = 'banner'; $('#banner-continue').hidden = true; }
   $$('#ev-table tbody tr').forEach((tr) => tr.classList.toggle('active-ev', aset.has(+tr.dataset.i)));
   const next = state.events.find((e) => e.tStart > t);
   $('#next-ev').textContent = state.events.length ? (act.length ? `Encounter in progress (${act.length}).` : next ? `Next encounter in ${S.fmtDur(next.tStart - t)}: ${relText(next)}, ${S.CLS_NAMES[next.terrain]}, ${S.fmtClock(next.tStart)}.` : 'No further encounters.') : '';
 }
 let lastTs = 0;
+const SEV_RANK = { low: 0, medium: 1, high: 2 };
+function sevOK(ev) { return (SEV_RANK[ev.level] ?? 0) >= +$('#minsev').value; }
+function setSimStatus(msg, flash) {
+  const el = $('#simstatus'); el.textContent = msg; $('#status').textContent = msg;
+  el.classList.remove('flash'); if (flash) { void el.offsetWidth; el.classList.add('flash'); }
+}
 function frame(ts) {
   if (!state.playing) return;
   const dt = Math.min(0.1, (ts - lastTs) / 1000); lastTs = ts;
-  state.t += dt * +$('#speed').value;
-  if (state.t >= state.tMax) { state.t = state.tMax; setPlaying(false); }
+  const prev = state.t, next = prev + dt * +$('#speed').value;
+  if ($('#autopause').checked) {
+    let hit = -1;
+    state.events.forEach((ev, i) => { if (ev.tStart > prev && ev.tStart <= next && sevOK(ev) && (hit < 0 || ev.tStart < state.events[hit].tStart)) hit = i; });
+    if (hit >= 0) { autoPause(hit); return; }
+  }
+  state.t = next;
+  if (state.t >= state.tMax) { state.t = state.tMax; setPlaying(false); setSimStatus('End of day reached. Press Restart to run again.'); }
   updateFrame();
-  requestAnimationFrame(frame);
+  if (state.playing) requestAnimationFrame(frame);
 }
+function autoPause(i) {
+  const ev = state.events[i];
+  state.t = ev.tStart; setPlaying(false); state.pausedEv = i;
+  const b = ev.lat != null ? L_.latLng(ev.lat, ev.lon) : null;
+  if (b && !map.getBounds().pad(-0.15).contains(b)) map.panTo(b, { animate: true });
+  try {
+    const mr = $('#map').getBoundingClientRect(), tr = $('#transport').getBoundingClientRect();
+    if (mr.top < tr.bottom || mr.top > innerHeight - 160) window.scrollBy({ top: mr.top - tr.bottom - 8, behavior: 'smooth' });
+  } catch (e) {}
+  setSimStatus(`Paused at ${S.fmtClock(ev.tStart)}: ${relText(ev)}, ${S.CLS_NAMES[ev.terrain]}. Press Run or Continue.`);
+  updateFrame();
+}
+const ICO_PLAY = 'M7 4.5v15l13-7.5z', ICO_PAUSE = 'M6 4.5h4.2v15H6zM13.8 4.5H18v15h-4.2z';
 function setPlaying(p) {
-  state.playing = p; $('#play-btn').textContent = p ? 'Pause' : 'Play';
-  if (p) { if (state.t >= state.tMax) state.t = state.tMin; lastTs = performance.now(); requestAnimationFrame(frame); }
+  state.playing = p; state.pausedEv = p ? null : state.pausedEv;
+  $('#play-lbl').textContent = p ? 'Pause' : 'Run'; $('#play-ico').setAttribute('d', p ? ICO_PAUSE : ICO_PLAY);
+  const b = $('#play-btn'); b.setAttribute('aria-pressed', String(p)); b.classList.toggle('running', p);
+  if (p) {
+    if (state.t >= state.tMax) state.t = state.tMin;
+    lastTs = performance.now(); setSimStatus('Running at ' + $('#speed').value + 'x. Pausing at each encounter.'.replace('Pausing at each encounter.', $('#autopause').checked ? 'Will pause at each encounter.' : 'Auto-pause is off.'));
+    requestAnimationFrame(frame);
+  } else updateFrame();
+}
+function restart() {
+  setPlaying(false); state.pausedEv = null;
+  state.t = state.sims.length ? Math.min(...state.sims.map((x) => x.t0)) : state.tMin;
+  updateFrame(); setSimStatus(`Restarted at ${S.fmtClock(state.t)}. Press Run.`);
+}
+function nextEncounter() {
+  const ev = state.events.find((e) => e.tStart > state.t + 1 && sevOK(e));
+  if (!ev) { setSimStatus('No further encounters at this severity.'); return; }
+  setTime(ev.tStart - 60, true); state.pausedEv = null;
+  setSimStatus(`Jumped to 1 minute before the encounter at ${S.fmtClock(ev.tStart)}. Press Run.`);
 }
 
-// ---------------------------------------------------------------- question card
 function renderQuestion() {
   const gs = state.sims.map((s) => s.grp);
   const fill = (sel, def) => { const cur = sel.value; sel.innerHTML = gs.map((g) => `<option value="${g.id}">${esc(g.name)}</option>`).join(''); sel.value = gs.some((g) => g.id === cur) ? cur : def; };
@@ -452,7 +501,7 @@ function renderOptResult(r, sc, locked) {
   out.querySelectorAll('[data-apply]').forEach((b) => b.addEventListener('click', () => {
     const a = r.after[+b.dataset.apply];
     for (const g of a.groups) { if (g.id === 'obs') state.obs.t0 = g.t0; else if (state.rows[g.id]) state.rows[g.id].t0 = g.t0; }
-    renderRows(); scheduleRun();
+    renderRows(); scheduleRun('applied schedule');
   }));
 }
 
@@ -537,7 +586,7 @@ function applyTerrainEdit(cls) {
   const merged = []; for (const o of list) { const p = merged.at(-1); if (p && p.cls === o.cls && Math.abs(p.b - o.a) < 1) p.b = o.b; else merged.push({ ...o }); }
   state.overrides[r.id] = merged; if (!merged.length) delete state.overrides[r.id];
   $('#te-info').textContent = cls === 'clear' ? 'Edits cleared in range.' : `Set miles ${(a / MI).toFixed(2)} to ${(b / MI).toFixed(2)} to ${S.CLS_NAMES[cls]}.`;
-  renderTerrainList(); scheduleRun();
+  renderTerrainList(); scheduleRun('terrain');
 }
 function renderTerrainList() {
   const el = $('#te-list'); const items = [];
@@ -705,7 +754,7 @@ function onCalibAction(e) {
   if (act === 'shift') row.t0 = clamp(Math.round((row.t0 + res.impliedShiftMin * 60) / 60) * 60, T_MIN, T_MAX);
   if (act === 'pace' && res.impliedPace) row.pace = clamp(Math.round(res.impliedPace * 100), 40, 160);
   if (act === 'stop') (row.delays ||= []).push({ mile: Math.max(0.5, res.groupMile - 1), min: Math.max(1, Math.round(res.impliedDelayMin)) });
-  renderRows(); scheduleRun();
+  renderRows(); scheduleRun('calibration choice');
 }
 function fillFromMap(e) {
   const hits = nearbyMiles(e.latlng, 20); if (!hits.length) { return; }
@@ -725,9 +774,22 @@ async function init() {
   // events
   $('#rows').addEventListener('change', onRowChange); $('#rows').addEventListener('input', (e) => { if (e.target.type === 'number') onRowChange(e); });
   $('#res').addEventListener('change', (e) => { state.res = +e.target.value; renderRows(); saveState(); });
-  $('#reset-btn').addEventListener('click', () => { state.rows = defaultRows(); state.obs = { on: false, routeId: 'sbh', t0: 9 * 3600 + 45 * 60, reverse: false, skill: 'intermediate' }; state.calib = []; renderRows(); scheduleRun(); });
+  $('#reset-btn').addEventListener('click', () => { state.rows = defaultRows(); state.obs = { on: false, routeId: 'sbh', t0: 9 * 3600 + 45 * 60, reverse: false, skill: 'intermediate' }; state.calib = []; renderRows(); scheduleRun('reset to default'); });
   for (const id of ['#q-x', '#q-y', '#q-t', '#q-from', '#q-to']) $(id).addEventListener('change', computeQuestion);
   $('#play-btn').addEventListener('click', () => setPlaying(!state.playing));
+  $('#restart-btn').addEventListener('click', restart); $('#next-btn').addEventListener('click', nextEncounter);
+  $('#banner-continue').addEventListener('click', () => setPlaying(true));
+  $('#speed').addEventListener('change', () => { if (state.playing) setSimStatus('Running at ' + $('#speed').value + 'x.'); });
+  $('#minsev').addEventListener('change', () => { try { localStorage.setItem('near.minsev', $('#minsev').value); } catch (e) {} });
+  $('#autopause').addEventListener('change', () => { try { localStorage.setItem('near.autopause', $('#autopause').checked ? '1' : '0'); } catch (e) {} });
+  try { if (localStorage.getItem('near.autopause') === '0') $('#autopause').checked = false; const ms = localStorage.getItem('near.minsev'); if (ms) $('#minsev').value = ms; } catch (e) {}
+  const lg = $('#legend'), setLegend = (open) => { lg.classList.toggle('collapsed', !open); $('#legend-toggle').setAttribute('aria-expanded', String(open)); };
+  setLegend(!matchMedia('(max-width: 900px)').matches);
+  $('#legend-toggle').addEventListener('click', () => setLegend(lg.classList.contains('collapsed')));
+  const hw = $('#howto'); let hwOff = false; try { hwOff = localStorage.getItem('near.howto') === 'off'; } catch (e) {}
+  hw.hidden = hwOff;
+  $('#howto-x').addEventListener('click', () => { hw.hidden = true; try { localStorage.setItem('near.howto', 'off'); } catch (e) {} });
+  $('#howto-show').addEventListener('click', () => { hw.hidden = false; try { localStorage.removeItem('near.howto'); } catch (e) {} hw.scrollIntoView({ block: 'nearest' }); });
   $('#back-btn').addEventListener('click', () => setTime(state.t - 300)); $('#fwd-btn').addEventListener('click', () => setTime(state.t + 300));
   $('#slider').addEventListener('input', (e) => setTime(+e.target.value));
   $('#ticks').addEventListener('click', (e) => { const s = e.target.closest('span'); if (s) jumpToEvent(+s.dataset.i); });
@@ -752,17 +814,17 @@ async function init() {
   $('#te-route').addEventListener('change', () => { te.a = te.b = null; te.step = 0; $('#te-a').value = $('#te-b').value = ''; drawSelection(); });
   $('#te-a').addEventListener('input', () => { te.a = parseFloat($('#te-a').value); te.b = parseFloat($('#te-b').value); drawSelection(); }); $('#te-b').addEventListener('input', () => { te.a = parseFloat($('#te-a').value); te.b = parseFloat($('#te-b').value); drawSelection(); });
   $$('[data-te]').forEach((b) => b.addEventListener('click', () => applyTerrainEdit(b.dataset.te)));
-  $('#te-clearall').addEventListener('click', () => { state.overrides = {}; renderTerrainList(); scheduleRun(); });
+  $('#te-clearall').addEventListener('click', () => { state.overrides = {}; renderTerrainList(); scheduleRun('terrain overrides'); });
   $('#te-export').addEventListener('click', () => { const blob = new Blob([JSON.stringify({ app: 'near-ride-deconfliction', version: 1, overrides: state.overrides, wptMinutes: state.wptMinutes }, null, 1)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'near-terrain-edits.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); });
-  $('#te-import').addEventListener('change', async (e) => { const f = e.target.files[0]; if (!f) return; try { const j = JSON.parse(await f.text()); if (j.overrides) state.overrides = j.overrides; if (j.wptMinutes) state.wptMinutes = j.wptMinutes; renderTerrainList(); renderStops(); scheduleRun(); $('#te-info').textContent = 'Edits imported.'; } catch (err) { $('#te-info').textContent = 'Could not read that file: ' + err.message; } e.target.value = ''; });
+  $('#te-import').addEventListener('change', async (e) => { const f = e.target.files[0]; if (!f) return; try { const j = JSON.parse(await f.text()); if (j.overrides) state.overrides = j.overrides; if (j.wptMinutes) state.wptMinutes = j.wptMinutes; renderTerrainList(); renderStops(); scheduleRun('imported settings'); $('#te-info').textContent = 'Edits imported.'; } catch (err) { $('#te-info').textContent = 'Could not read that file: ' + err.message; } e.target.value = ''; });
   $('#ca-add').addEventListener('click', addCalib); $('#ca-out').addEventListener('click', onCalibAction);
   $('#ca-clear').addEventListener('click', () => { state.calib = []; saveState(); renderCalib(); });
   $('#ca-example').addEventListener('click', () => { $('#ca-route').value = 'mbh'; $('#ca-mile').value = '22'; if ([...$('#ca-group').options].some((o) => o.value === 'sbh')) $('#ca-group').value = 'sbh'; $('#ca-time').value = ''; $('#ca-head').value = 'same'; addCalib(); });
-  $('#rows').addEventListener('click', (e) => { const b = e.target.closest('[data-deldelay]'); if (!b) return; const [id, i] = b.dataset.deldelay.split(':'); const row = id === '__obs' ? state.obs : state.rows[id]; row.delays.splice(+i, 1); renderRows(); scheduleRun(); });
+  $('#rows').addEventListener('click', (e) => { const b = e.target.closest('[data-deldelay]'); if (!b) return; const [id, i] = b.dataset.deldelay.split(':'); const row = id === '__obs' ? state.obs : state.rows[id]; row.delays.splice(+i, 1); renderRows(); scheduleRun('extra stops'); });
   $('#st-route').addEventListener('change', renderStops);
-  $('#st-table').addEventListener('change', (e) => { const el = e.target; if (el.dataset.w == null) return; const rid = $('#st-route').value; (state.wptMinutes[rid] ||= {})[el.dataset.w] = clamp(+el.value || 0, 0, 180); scheduleRun(); });
-  $('#settings').addEventListener('change', (e) => { const el = e.target; const k = el.dataset.k; if (!k) return; state.params[k] = el.type === 'checkbox' ? el.checked : clamp(+el.value, +el.min, +el.max); if (el.type !== 'checkbox') el.value = state.params[k]; renderStops(); scheduleRun(); });
-  $('#settings-reset').addEventListener('click', () => { state.params = {}; renderSettings(); renderStops(); scheduleRun(); });
+  $('#st-table').addEventListener('change', (e) => { const el = e.target; if (el.dataset.w == null) return; const rid = $('#st-route').value; (state.wptMinutes[rid] ||= {})[el.dataset.w] = clamp(+el.value || 0, 0, 180); scheduleRun('stop time'); });
+  $('#settings').addEventListener('change', (e) => { const el = e.target; const k = el.dataset.k; if (!k) return; state.params[k] = el.type === 'checkbox' ? el.checked : clamp(+el.value, +el.min, +el.max); if (el.type !== 'checkbox') el.value = state.params[k]; renderStops(); scheduleRun('a model setting'); });
+  $('#settings-reset').addEventListener('click', () => { state.params = {}; renderSettings(); renderStops(); scheduleRun('model settings reset'); });
   $('#gpx-add').addEventListener('click', async () => {
     const f = $('#gpx-file').files[0]; const msg = $('#gpx-msg');
     if (!f) { msg.textContent = 'Choose a .gpx file first.'; return; }
@@ -772,7 +834,7 @@ async function init() {
       state.custom.push(r); state.routes.push(r); state.rows[id] = { n: 0, t0: 9 * 3600, skill: 'intermediate', reverse: false, pace: 100, delays: [] };
       saveCustom(); reinitWorker(); refreshRouteSelects(); renderRows(); renderCustomList(); renderStops();
       msg.textContent = `Added "${r.name}" (${r.stats.lengthMi} mi, ${r.pts.length} points, ${r.waypoints.length} waypoints). Set riders above, then refine terrain in the Terrain editor.`;
-      scheduleRun();
+      scheduleRun('added route');
     } catch (err) { msg.textContent = 'Could not import: ' + err.message; }
   });
   renderOptLocks();

@@ -5,7 +5,6 @@
 **Live site:** https://9wzg44nz44-glitch.github.io/near-ride-deconfliction/
 
 Created by Dan Britton with Grok Bot (AI assistant). Contact: BrittonSolutions@icloud.com.
-This project is separate from, and unrelated to, Dan's physics experiments.
 
 > **Estimates only.** Not a safety system. Obey posted limits and stop signs. Class VI roads are used at your own risk; verify legal status and seasonal closures. See `docs/about.html` for the model and its limits.
 
@@ -21,6 +20,10 @@ This project is separate from, and unrelated to, Dan's physics experiments.
 - **Start-time optimizer** (top 3 schedules with before/after counts), **Monte Carlo leader briefing** (probability and time window per encounter, Markdown copy and print).
 - **Question card**: "Is SBH overtaking MBH on a Class VI section between 10 and 11 AM?" answered from the model.
 - Client-side **GPX import** for extra routes.
+
+## Using the simulator
+
+Set riders and departure times (below the map), press **Run** in the transport bar above the map, and watch for the automatic pause at each encounter (**Continue** or Run carries on). Controls: Run/Pause, Restart, speed 1x/10x/60x/300x, Eastern clock, time slider, "Pause automatically at each encounter" with a minimum severity filter, and "Next encounter". Every input change recalculates automatically and reports "Simulation updated: N encounters found". The map legend is collapsible (collapsed by default on narrow screens) and stays inside the map.
 
 ## Run it
 

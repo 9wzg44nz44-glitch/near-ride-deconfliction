@@ -105,3 +105,75 @@ code{background:var(--chip);padding:1px 5px;border-radius:4px;font-size:.9em}
 .obs-card ul{margin:.3rem 0 .3rem 1.1rem;padding:0}
 .obs-card .acts{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .leaflet-tooltip.near-hover{font-size:.8rem;line-height:1.3}
+
+/* transport bar, how-to strip, pause banner */
+.site-header{position:static}
+.howto{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;background:var(--panel);border:2px solid var(--accent);border-radius:12px;padding:8px 12px;margin:0 0 10px}
+.howto[hidden]{display:none}
+.howto ol{display:flex;flex-wrap:wrap;gap:6px 16px;list-style:none;margin:0;padding:0;flex:1 1 320px}
+.howto li{font-size:.92rem}
+.howto li b:first-child{display:inline-block;background:var(--accent);color:var(--accent-ink);border-radius:50%;width:1.5em;height:1.5em;text-align:center;line-height:1.5em;margin-right:6px}
+.transport{position:sticky;top:0;z-index:1250;background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:8px 12px;margin:0 0 10px;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+.tr-row{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center}
+.run-btn{min-height:50px;min-width:116px;font-size:1.2rem;font-weight:700;background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.run-btn.running{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.tr-speed{font-size:.9rem;display:inline-flex;gap:6px;align-items:center}
+.transport .clock{font-size:1.6rem;margin-left:auto;min-width:0}
+.transport .tz{margin-left:-6px}
+.tr-slider input[type=range]{width:100%;margin:4px 0 0;height:28px}
+.transport .ticks{margin:0 8px 2px}
+.tr-opts{margin-top:2px;font-size:.92rem}
+.tr-opts .auto{font-weight:600}
+.tr-opts input[type=checkbox]{width:18px;height:18px;vertical-align:-3px}
+.tr-status{font-size:.9rem;padding:3px 8px;border-radius:8px;background:var(--chip);margin-top:4px}
+.tr-status.flash{animation:flash 1.6s ease-out}
+@keyframes flash{0%{background:var(--accent);color:var(--accent-ink)}100%{background:var(--chip)}}
+.groupkey{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:.85rem;margin-top:4px}
+.banner{display:none;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center}
+.banner.on{display:flex}
+.banner .btn{min-height:34px}
+.player{padding:8px 12px}
+@media (max-width:640px){
+  .transport{padding:6px 8px;margin-bottom:8px}
+  .run-btn{min-height:48px;min-width:104px}
+  .transport .clock{font-size:1.25rem}
+  .tr-opts{font-size:.85rem}
+  .tr-status{font-size:.82rem}
+  .legend{font-size:.7rem;max-width:150px;padding:4px 6px}
+}
+@media (prefers-reduced-motion:reduce){.tr-status.flash{animation:none}}
+@media print{.transport,.howto{display:none!important}}
+
+/* map box: legend and banner live inside the map only, never over the controls */
+.mapwrap{overflow:hidden}
+.mapbox{position:relative;overflow:hidden;isolation:isolate}
+.mapbox .legend{left:8px;bottom:8px;max-height:calc(100% - 16px);overflow:auto;z-index:800}
+.mapbox .banner{z-index:850}
+.legend #legend-toggle{display:flex;align-items:center;gap:6px;width:100%;border:0;background:none;padding:2px 0;font-weight:700;font-size:.85rem;color:inherit;cursor:pointer;min-height:28px}
+.legend.collapsed #legend-body{display:none}
+.legend.collapsed{padding:2px 8px}
+.legend.collapsed .lg-caret{transform:rotate(-90deg)}
+.player{position:relative;z-index:1;background:var(--panel);padding-bottom:max(8px,env(safe-area-inset-bottom))}
+.transport{position:-webkit-sticky;position:sticky}
+#map{height:min(62vh,560px)}
+@supports (height:1svh){#map{height:min(62svh,560px)}}
+@media (max-width:640px){#map{height:min(56vh,480px)}@supports (height:1svh){#map{height:min(56svh,480px)}}}
+
+details.disclaimer summary{cursor:pointer;min-height:28px}
+details.disclaimer p{margin:.4rem 0 0}
+.transport-more{margin:-4px 0 10px;padding:6px 12px;background:var(--panel);border:1px solid var(--rule);border-radius:12px}
+.transport-more .tr-opts{margin-top:0}
+.transport .tr-status{margin-top:2px}
+@media (max-width:640px){
+  .brand small{display:none}
+  .header-inner{padding:4px 8px;gap:6px}
+  .header-inner nav a{padding:4px 8px;min-height:36px}
+  main{padding-top:6px}
+  details.disclaimer{padding:6px 10px;margin-bottom:8px}
+  .howto{padding:6px 10px;margin-bottom:8px;gap:4px 10px}
+  .howto li{font-size:.82rem}.howto ol{gap:2px 12px}
+  .transport-more{padding:4px 8px;margin-bottom:8px}
+  .groupkey{font-size:.78rem;gap:2px 10px}
+  .transport .ticks{height:10px}
+}
+@media (max-width:640px){.banner{font-size:.8rem;padding:6px 10px;max-width:calc(100% - 20px);max-height:70%;overflow:auto}}

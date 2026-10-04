@@ -13,15 +13,64 @@
 <body>
 <header class="site-header"><div class="header-inner">
   <a class="brand" href="index.html">NEAR Deconfliction Estimator<small>Northeast Adventure Riders: route &amp; start time</small></a>
-  <nav aria-label="Main"><a href="index.html" aria-current="page">Simulator</a><a href="about.html">Method &amp; about</a></nav>
+  <nav aria-label="Main"><a href="index.html" aria-current="page">Simulator</a><a href="about.html">Method &amp; about</a><a href="about.html#how-to">Help</a></nav>
   <button type="button" class="icon-btn" id="theme-btn" aria-label="Toggle dark or light theme" title="Toggle theme">Theme</button>
 </div></header>
 <main id="main">
-  <p class="disclaimer"><strong>Estimates only.</strong> This is a planning aid built on a simplified model and volunteer map data. It is not a safety system. Obey posted limits and stop signs, ride for the conditions, and verify the legal status and seasonal closures of Class VI roads. <a href="about.html#limits">Limits and assumptions</a>.</p>
+  <details class="disclaimer"><summary><strong>Estimates only; not a safety system.</strong> <span class="small">Tap for details.</span></summary><p>This is a planning aid built on a simplified model and volunteer map data. It is not a safety system. Obey posted limits and stop signs, ride for the conditions, and verify the legal status and seasonal closures of Class VI roads. <a href="about.html#limits">Limits and assumptions</a>.</p></details>
+
+  <section class="howto" id="howto" aria-label="How to use" hidden>
+    <ol>
+      <li><b>1</b> Set riders and departure times (Scenario, below the map).</li>
+      <li><b>2</b> Press <b>Run</b> to animate the day.</li>
+      <li><b>3</b> Watch for pauses at encounters; press <b>Continue</b> to go on.</li>
+    </ol>
+    <a class="howto-help" href="about.html#how-to">Help</a>
+    <button type="button" class="btn small" id="howto-x" aria-label="Dismiss the how-to strip">Got it</button>
+  </section>
+
+  <div class="transport" id="transport" role="group" aria-label="Playback controls">
+    <div class="tr-row">
+      <button class="btn run-btn" type="button" id="play-btn" aria-pressed="false"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path id="play-ico" d="M7 4.5v15l13-7.5z" fill="currentColor"/></svg><span id="play-lbl">Run</span></button>
+      <button class="btn" type="button" id="restart-btn" title="Back to the earliest departure time"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.6-5.9M4 4v5h5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Restart</button>
+      <label class="tr-speed">Speed <select id="speed"><option value="1">1x</option><option value="10">10x</option><option value="60" selected>60x</option><option value="300">300x</option></select></label>
+      <span class="clock" id="clock" aria-label="Simulated clock, Eastern time">9:00:00 AM</span><span class="small muted tz">ET</span>
+    </div>
+    <div class="tr-slider"><input type="range" id="slider" min="25200" max="64800" step="5" value="32400" aria-label="Time of day"></div>
+    <div class="ticks" id="ticks" aria-label="Encounter markers on the timeline"></div>
+    <div class="tr-status" id="simstatus" role="status" aria-live="polite">Loading...</div>
+  </div>
+  <div class="transport-more" id="transport-more">
+    <div class="tr-row tr-opts">
+      <label class="auto"><input type="checkbox" id="autopause" checked> Pause automatically at each encounter</label>
+      <label class="small">Minimum severity <select id="minsev"><option value="0">any</option><option value="1">medium and up</option><option value="2">high only</option></select></label>
+    </div>
+    <div class="groupkey" id="groupkey"></div>
+  </div>
+
+  <section class="mapwrap" aria-label="Animated map">
+    <div class="mapbox">
+      <div id="map" role="application" aria-label="Map of ride groups"></div>
+      <div class="banner" id="banner" role="alert" aria-live="assertive"><span id="banner-text"></span><button type="button" class="btn small primary" id="banner-continue" hidden>Continue</button></div>
+      <div class="legend" id="legend"><button type="button" id="legend-toggle" aria-expanded="true" aria-controls="legend-body">Legend <span aria-hidden="true" class="lg-caret">&#9662;</span></button><div id="legend-body"></div></div>
+    </div>
+    <div class="player">
+      <div class="line">
+        <button class="btn small" type="button" id="back-btn" aria-label="Back 5 minutes">-5 min</button>
+        <button class="btn small" type="button" id="fwd-btn" aria-label="Forward 5 minutes">+5 min</button>
+        <button class="btn small" type="button" id="next-btn" title="Jump to just before the next encounter">Next encounter</button>
+        <label class="small"><input type="checkbox" id="beep"> Beep on encounter</label>
+        <label class="small"><input type="checkbox" id="show-all"> Show all routes</label>
+        <label class="small"><input type="checkbox" id="show-low"> Mark low-confidence terrain</label>
+        <button type="button" class="btn small" id="howto-show">How to use</button>
+      </div>
+      <div class="small muted" id="next-ev" aria-live="polite"></div>
+    </div>
+  </section>
 
   <section class="panel" id="scenario" aria-labelledby="sc-h">
-    <h2 id="sc-h">1. Scenario</h2>
-    <p class="small muted">Set riders per route (0 = not riding) and departure times in local Eastern clock time, 7:00 AM to 3:00 PM. Defaults: SBH Monadnock 18 riders at 9:00 AM, MBH Monadnock 7 riders at 9:30 AM.</p>
+    <h2 id="sc-h">Scenario: riders and departure times</h2>
+    <p class="small muted">Set riders per route (0 = not riding) and departure times in local Eastern clock time, 7:00 AM to 3:00 PM. Defaults: SBH Monadnock 18 riders at 9:00 AM, MBH Monadnock 7 riders at 9:30 AM. Any change recalculates the simulation and returns the clock to the start; then press Run above.</p>
     <div class="tablewrap"><table id="rows"><caption class="small muted" style="text-align:left">Ride groups</caption>
       <thead><tr><th scope="col">Route</th><th scope="col">Riders</th><th scope="col">Departs (ET)</th><th scope="col">Skill</th><th scope="col">Direction</th><th scope="col" title="Percent of modeled speed; use below 100 for a slower group">Pace %</th></tr></thead>
       <tbody></tbody></table></div>
@@ -45,26 +94,6 @@
     <div class="small muted" id="q-detail"></div>
   </section>
 
-  <section class="mapwrap" aria-label="Animated map">
-    <div id="map" role="application" aria-label="Map of ride groups"></div>
-    <div class="banner" id="banner" role="alert" aria-live="assertive"></div>
-    <div class="legend" id="legend"></div>
-    <div class="player">
-      <div class="line">
-        <button class="btn primary" type="button" id="play-btn" aria-label="Play or pause">Play</button>
-        <button class="btn" type="button" id="back-btn" aria-label="Back 5 minutes">-5 min</button>
-        <button class="btn" type="button" id="fwd-btn" aria-label="Forward 5 minutes">+5 min</button>
-        <label>Speed <select id="speed"><option value="1">1x</option><option value="10">10x</option><option value="60" selected>60x</option><option value="300">300x</option><option value="900">900x</option></select></label>
-        <span class="clock" id="clock" aria-live="off">9:00 AM</span><span class="small muted">Eastern</span>
-        <label class="small"><input type="checkbox" id="beep"> Beep on encounter</label>
-        <label class="small"><input type="checkbox" id="show-all"> Show all routes</label>
-        <label class="small"><input type="checkbox" id="show-low"> Mark low-confidence terrain</label>
-      </div>
-      <div class="sliderbox"><input type="range" id="slider" min="25200" max="64800" step="5" value="32400" aria-label="Time of day"></div>
-      <div class="ticks" id="ticks" aria-label="Encounter markers on the timeline"></div>
-      <div class="small muted" id="next-ev" aria-live="polite"></div>
-    </div>
-  </section>
 
   <section class="panel" aria-label="Results and tools">
     <div class="tabs" role="tablist" aria-label="Tools" id="tabs">
@@ -182,7 +211,6 @@
 </main>
 <footer>
   <p><strong>Created by Dan Britton with Grok Bot (AI assistant).</strong> Questions or corrections: <a href="mailto:BrittonSolutions@icloud.com">BrittonSolutions@icloud.com</a>.</p>
-  <p>This project is separate from, and unrelated to, Dan's physics experiments.</p>
   <p>Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> (ODbL). Map tiles &copy; OpenStreetMap. Mapping library: <a href="https://leafletjs.com">Leaflet</a>. Source code (MIT) on <a href="https://github.com/9wzg44nz44-glitch/near-ride-deconfliction">GitHub</a>.</p>
   <p>Estimates only; not a safety system. Class VI roads are used at your own risk.</p>
 </footer>

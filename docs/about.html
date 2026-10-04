@@ -19,6 +19,14 @@
 <h1>Method, data and limits</h1>
 <p class="disclaimer" id="limits"><strong>Estimates only.</strong> This tool is a planning aid, not a safety system. It cannot know about weather, mud, washouts, traffic, mechanical trouble, wrong turns, rider choices or road closures. Obey posted speed limits and stop signs on public roads. Class VI roads in New Hampshire are unmaintained by the town; they are used at your own risk, may be closed seasonally or by the town, and their legal status and condition must be verified before riding. Nothing here replaces the judgment of the ride leader and each rider.</p>
 
+<h2 id="how-to">How to use</h2>
+<ol>
+<li><strong>Set riders and departure times.</strong> The Scenario table sits below the map. Any change (riders, departure, skill, direction, pace, extra stops, terrain edits, stop times, model settings such as the encounter threshold) recalculates the simulation automatically, returns the clock to the earliest departure and shows a status line such as "Simulation updated: 4 encounters found".</li>
+<li><strong>Press Run.</strong> The transport bar above the map stays on screen while you scroll. It has Run/Pause, Restart (back to the earliest departure), a speed selector (1x, 10x, 60x, 300x; default 60x), the clock in Eastern time and a time slider with encounter marks. "Next encounter" jumps to one minute before the next one.</li>
+<li><strong>Watch for pauses at encounters.</strong> With "Pause automatically at each encounter" on (the default), playback stops when an encounter begins, the banner names the groups, whether they travel in the same or opposite direction, the terrain and the time, and a pulsing ring marks the spot on the map. Press <strong>Continue</strong> (or Run) to carry on; the same encounter does not pause again. "Minimum severity" limits the pauses to medium or high severity encounters.</li>
+</ol>
+<p>The map legend can be collapsed with its Legend button and starts collapsed on narrow screens. The yellow "How to use" strip on the main page can be dismissed; the "How to use" button under the map brings it back.</p>
+
 <h2>What it does</h2>
 <p>You choose how many riders are on each route and when each group leaves the start. The simulator moves every group along its route second by second, finds the times and places where groups come within a set distance of each other, and labels each encounter by direction (same direction, opposite direction, or crossing), by who is overtaking, and by terrain (paved, maintained dirt, or Class VI). It can then search for start times that avoid or reduce encounters and can run many randomized rides to tell a leader how likely each encounter is.</p>
 <p>The routes in this version are <strong>SBH Monadnock</strong> and <strong>MBH Monadnock</strong>, two New Hampshire dual-sport routes that share a start and many roads. You can add more routes from a GPX file in the browser (see below).</p>
@@ -96,7 +104,6 @@
 
 <h2>Credits and contact</h2>
 <p>Created by <strong>Dan Britton with Grok Bot (AI assistant)</strong>. Questions or corrections: <a href="mailto:BrittonSolutions@icloud.com">BrittonSolutions@icloud.com</a>. Source code and data build scripts: <a href="https://github.com/9wzg44nz44-glitch/near-ride-deconfliction">github.com/9wzg44nz44-glitch/near-ride-deconfliction</a>.</p>
-<p>This project is separate from, and unrelated to, Dan's physics experiments.</p>
 </main>
 <footer>
   <p>Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a> (ODbL). Estimates only; not a safety system.</p>
